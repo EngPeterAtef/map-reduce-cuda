@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
 
     // =================================================
     // =================================================
-    int num_mappers = 4;
+    int num_mappers = 6;
     int num_reducers = 1;
     pthread_t mappers[num_mappers];
     pthread_t reducers[num_reducers];
@@ -214,6 +214,37 @@ int main(int argc, char *argv[])
     // ===================== Sort ======================
     // =================================================
     sort(map_pairs.begin(), map_pairs.end(), PairCompare());
+
+    // =================================================
+    // ============= Combine unique values =============
+    // =================================================
+    std::vector<ShuffleAndSort_KeyPairOutput> shuffle_output;
+    for (int i = 0; i < inputNum; i++)
+    {
+        if (i == 0 || map_pairs[i].key != map_pairs[i - 1].key)
+        {
+            ShuffleAndSort_KeyPairOutput current_pair;
+            current_pair.key = map_pairs[i].key;
+            current_pair.values.push_back(map_pairs[i].value);
+            shuffle_output.push_back(current_pair);
+        }
+        else
+        {
+            shuffle_output.back().values.push_back(map_pairs[i].value);
+        }
+    }
+    // // Add the last pair to the output vector
+    // shuffle_output.push_back(current_pair);
+    // print pairs
+    for (int i = 0; i < shuffle_output.size(); i++)
+    {
+        std::cout << "Key: " << shuffle_output[i].key << ", Values: ";
+        for (int j = 0; j < 2; j++)
+        {
+            std::cout << shuffle_output[i].values[j].values[0] << " " << shuffle_output[i].values[j].values[1] << " ";
+        }
+        std::cout << std::endl;
+    }
 
     // =================================================
     // =================== Reduce ======================

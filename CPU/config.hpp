@@ -7,7 +7,7 @@ unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
 // Total No. of output values (K - No. of clusters)
-const int NUM_OUTPUT = 15;
+const int NUM_OUTPUT = 3;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
@@ -43,6 +43,11 @@ struct MyPair
         os << "\n";
         return os;
     }
+};
+struct ShuffleAndSort_KeyPairOutput
+{
+    Mykey key;
+    std::vector<MyValue> values;
 };
 
 /*
