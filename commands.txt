@@ -1,2 +1,5 @@
 nvcc -O3 -dc map_reduce.cu
 nvcc -O3 -o kmeans map_reduce.obj
+====================================
+nvcc -O3 -dc merge_sort.cu
+nvcc -O3 -o merge_sort merge_sort.obj
