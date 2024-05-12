@@ -19,13 +19,13 @@ struct Point
 using input_type = dim3;  // Datapoint (or vector) read from the text file
 using output_type = dim3; // Outputs are the cluster centroids
 
-using key_type = int; // Cluster that the point corresponds to
+using Mykey = int; // Cluster that the point corresponds to
 using value_type = Point;
 
 // Pair type definition
 struct pair_type
 {
-    key_type key;
+    Mykey key;
     value_type value;
 
     // Printing for debugging

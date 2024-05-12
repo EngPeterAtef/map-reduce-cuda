@@ -3,7 +3,8 @@
 #include <stdio.h>
 
 // C++11 Uniform Random Number Generator
-class UniformDistribution {
+class UniformDistribution
+{
 public:
     UniformDistribution(int max)
         : generator(std::chrono::system_clock::now().time_since_epoch().count()),
@@ -12,7 +13,8 @@ public:
         // printf("Using C++11's uniform_int_distribution for random generator\n");
     }
 
-    int sample() {
+    int sample()
+    {
         return distribution(generator);
     }
 

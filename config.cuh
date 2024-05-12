@@ -7,8 +7,6 @@ const int BLOCK_SIZE = 1024;
 using uint64_cu = unsigned long long int;
 
 // No. of input elements (Lines in text file)
-// TODO: Maybe make it variable, calculated from reading the text file
-
 uint64_cu NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
@@ -21,32 +19,31 @@ const int DIMENSION = 2;
 const int ITERATIONS = 1000;
 
 // Custom types
-struct Point
+struct Vector2D
 {
     int values[DIMENSION];
 };
 
 // Type declarations for input, output & key-value pairs
-using input_type = Point;  // Datapoint (or vector) read from the text file
-using output_type = Point; // Outputs are the cluster centroids
+using input_type = Vector2D;  // Datapoint (or vector) read from the text file
+using output_type = Vector2D; // Outputs are the cluster centroids
 
 // So each point will get associated with a cluster (with id -> key)
-using key_type = int;     // Cluster that the point corresponds to
-using value_type = Point; // Point associated with the cluster
+using Mykey = int;        // Cluster that the point corresponds to
+using MyValue = Vector2D; // Point associated with the cluster
 
 // Pair type definition
-struct pair_type
+struct MyPair
 {
-    key_type key;
-    value_type value;
+    Mykey key;
+    MyValue value;
 
     // Printing for debugging
-    friend std::ostream &operator<<(std::ostream &os, const pair_type &pair)
+    friend std::ostream &operator<<(std::ostream &os, const MyPair &pair)
     {
         os << "Key: " << pair.key << ", Point: ";
         for (int i = 0; i < DIMENSION; i++)
             os << pair.value.values[i] << " ";
-
         os << "\n";
         return os;
     }
@@ -56,9 +53,9 @@ struct pair_type
     Comparision operator for comparing between 2 KeyValuePairs
     Returns true if first pair has key less than the second
 */
-struct KeyValueCompare
+struct PairCompare
 {
-    __host__ __device__ bool operator()(const pair_type &lhs, const pair_type &rhs)
+    __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
     {
         return lhs.key < rhs.key;
     }

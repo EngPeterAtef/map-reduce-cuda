@@ -13,7 +13,7 @@ int GRID_SIZE = (NUM_INPUT + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
 __device__ __host__
     uint64_cu
-    distance(const Point &p1, const Point &p2)
+    distance(const Vector2D &p1, const Vector2D &p2)
 {
     uint64_cu dist = 0;
     for (int i = 0; i < DIMENSION; i++)
@@ -30,7 +30,7 @@ __device__ __host__
     Input is already stored in memory, and output pairs must be stored in the memory allocated
     Muliple pairs can be generated for a single input, but their number shouldn't exceed NUM_PAIRS
 */
-__device__ void mapper(const input_type *input, pair_type *pairs, output_type *output)
+__device__ void mapper(const input_type *input, MyPair *pairs, output_type *output)
 {
     // Find centroid with min distance from the current point
     uint64_cu min_distance = ULLONG_MAX;
@@ -54,7 +54,7 @@ __device__ void mapper(const input_type *input, pair_type *pairs, output_type *o
     Reducer to convert Key-Value pairs to desired output
     `len` number of pairs can be read starting from pairs, and output is stored in memory
 */
-__device__ void reducer(pair_type *pairs, size_t len, output_type *output)
+__device__ void reducer(MyPair *pairs, size_t len, output_type *output)
 {
     // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
 
@@ -98,45 +98,6 @@ void initialize(input_type *input, output_type *output)
     {
         int sample = distribution.sample();
         output[i] = input[sample];
-    }
-}
-
-/*
-    KMeans++ initializer, takes longer
-*/
-void pp_initialize(input_type *input, output_type *output)
-{
-    // Uniform Number generator for the first random chosen centroid
-    UniformDistribution distribution(NUM_INPUT);
-
-    int sample = distribution.sample();
-    output[0] = input[sample];
-
-    // Chose the next k-1 centroids
-    for (int cluster_id = 1; cluster_id < NUM_OUTPUT; cluster_id++)
-    {
-        uint64_cu max_dist_allp = 0; // For storing max dist till now
-        int max_dist_idx = -1;       // Index of datapoint at max distance
-
-        for (int i = 0; i < NUM_INPUT; i++)
-        {
-            // Find min dist between this point and all the prev centroids
-            uint64_cu min_dist = ULLONG_MAX;
-            for (int j = 0; j < cluster_id; j++)
-            {
-                min_dist = min(min_dist, distance(input[i], output[j]));
-            }
-
-            // If this point is at max dist from all centroids
-            if (min_dist > max_dist_allp)
-            {
-                max_dist_allp = min_dist;
-                max_dist_idx = i;
-            }
-        }
-
-        // Assign new centroid
-        output[cluster_id] = input[max_dist_idx];
     }
 }
 
@@ -211,7 +172,6 @@ int main(int argc, char *argv[])
 
     // Now chose initial centroids
     initialize(input, output);
-    // pp_initialize(input, output);
 
     auto t_seq_2 = steady_clock::now();
 
@@ -269,21 +229,23 @@ int main(int argc, char *argv[])
 // ===============================GPU IMPLEMENTATION==============================
 // ===============================================================================
 // ===============================================================================
-extern __device__ void mapper(const input_type *input, pair_type *pairs, output_type *output);
-extern __device__ void reducer(pair_type *pairs, size_t len, output_type *output);
+
+// functions definitions
+extern __device__ void mapper(const input_type *input, MyPair *pairs, output_type *output);
+extern __device__ void reducer(MyPair *pairs, size_t len, output_type *output);
 
 /*
     Mapping Kernel: Since each mapper runs independently of each other, we can
     give each thread its own input to process and a disjoint space where it can`
     store the key/value pairs it produces.
 */
-__global__ void mapKernel(const input_type *input, pair_type *pairs, output_type *dev_output, uint64_cu *NUM_INPUT_D)
+__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, uint64_cu *NUM_INPUT_D)
 {
     size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // Total number of threads, by jumping this much, it ensures that no thread gets the same data
-    size_t jump = blockDim.x * gridDim.x;
+    size_t step = blockDim.x * gridDim.x;
 
-    for (size_t i = threadId; i < *NUM_INPUT_D; i += jump)
+    for (size_t i = threadId; i < *NUM_INPUT_D; i += step)
     {
         // Input data to run mapper on, and the starting index of memory assigned for key-value pairs for this
         mapper(&input[i], &pairs[i * NUM_PAIRS], dev_output);
@@ -292,12 +254,18 @@ __global__ void mapKernel(const input_type *input, pair_type *pairs, output_type
 
 /*
     Call Mapper kernel with the required grid, blocks
-    TODO: Err checking
 */
-void runMapper(const input_type *dev_input, pair_type *dev_pairs, output_type *dev_output, uint64_cu *NUM_INPUT_D)
+void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, uint64_cu *NUM_INPUT_D)
 {
     mapKernel<<<GRID_SIZE, BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
     cudaDeviceSynchronize();
+    // error checking
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess)
+    {
+        fprintf(stderr, "ERROR: %s\n", cudaGetErrorString(error));
+        exit(-1);
+    }
 }
 
 /*
@@ -305,7 +273,7 @@ void runMapper(const input_type *dev_input, pair_type *dev_pairs, output_type *d
     Input is sorted array of keys (well, pairs)
     For each thread, find the keys that it'll work on and the range associated with each key
 */
-__global__ void reducerKernel(pair_type *pairs, output_type *output, uint64_cu *TOTAL_PAIRS_D)
+__global__ void reducerKernel(MyPair *pairs, output_type *output, uint64_cu *TOTAL_PAIRS_D)
 {
     size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // Total number of threads, by jumping this much, it ensures that no thread gets the same data
@@ -326,7 +294,7 @@ __global__ void reducerKernel(pair_type *pairs, output_type *output, uint64_cu *
         // Store unique keys and their ranges
         for (size_t j = 1; j < *TOTAL_PAIRS_D; j++)
         {
-            if (KeyValueCompare()(pairs[j - 1], pairs[j]))
+            if (PairCompare()(pairs[j - 1], pairs[j]))
             {
                 // The keys are unequal, therefore we have moved on to a new key
                 if (uniq_key_index == i)
@@ -366,7 +334,7 @@ __global__ void reducerKernel(pair_type *pairs, output_type *output, uint64_cu *
     TODO: Err checking
     TODO: Add separate constants for mapper, reducer grid, blocks
 */
-void runReducer(pair_type *dev_pairs, output_type *dev_output, uint64_cu *TOTAL_PAIRS_D)
+void runReducer(MyPair *dev_pairs, output_type *dev_output, uint64_cu *TOTAL_PAIRS_D)
 {
     reducerKernel<<<GRID_SIZE, BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D);
     cudaDeviceSynchronize();
@@ -399,14 +367,14 @@ void runMapReduce(const input_type *input, output_type *output)
     // Pointers for input, key-value pairs & output on device
     input_type *dev_input;
     output_type *dev_output;
-    pair_type *dev_pairs;
+    MyPair *dev_pairs;
 
     // Allocate memory on GPU for input
     size_t input_size = NUM_INPUT * sizeof(input_type);
     cudaMalloc(&dev_input, input_size);
 
     // Allocate memory for key-value pairs
-    size_t pair_size = TOTAL_PAIRS * sizeof(pair_type);
+    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
     cudaMalloc(&dev_pairs, pair_size);
 
     // Allocate memory for outputs
@@ -437,15 +405,15 @@ void runMapReduce(const input_type *input, output_type *output)
         runMapper(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
 
         // Create Thrust device pointer from key-value pairs
-        // thrust::device_ptr<pair_type> dev_pair_thrust_ptr(dev_pairs);
+        // thrust::device_ptr<MyPair> dev_pair_thrust_ptr(dev_pairs);
 
-        // thrust::copy(dev_pair_thrust_ptr, dev_pair_thrust_ptr + TOTAL_PAIRS, std::ostream_iterator<pair_type>(std::cout, " "));
+        // thrust::copy(dev_pair_thrust_ptr, dev_pair_thrust_ptr + TOTAL_PAIRS, std::ostream_iterator<MyPair>(std::cout, " "));
 
         // Sort Key-Value pairs based on Key
         // This should run on the device itself
-        thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, KeyValueCompare());
+        thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
 
-        // thrust::copy(dev_pair_thrust_ptr, dev_pair_thrust_ptr + TOTAL_PAIRS, std::ostream_iterator<pair_type>(std::cout, " "));
+        // thrust::copy(dev_pair_thrust_ptr, dev_pair_thrust_ptr + TOTAL_PAIRS, std::ostream_iterator<MyPair>(std::cout, " "));
 
         // Run reducer kernel on key-value pairs
         runReducer(dev_pairs, dev_output, TOTAL_PAIRS_D);

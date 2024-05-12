@@ -1,0 +1,2 @@
+nvcc -O3 -dc map_reduce.cu
+nvcc -O3 -o kmeans map_reduce.obj
