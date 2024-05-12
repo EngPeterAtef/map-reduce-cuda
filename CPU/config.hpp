@@ -7,7 +7,7 @@ unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
 // Total No. of output values (K - No. of clusters)
-const int NUM_OUTPUT = 3;
+const int NUM_OUTPUT = 10;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;

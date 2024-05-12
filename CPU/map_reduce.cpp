@@ -1,12 +1,12 @@
 #include <iostream>
 #include <chrono>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <climits>
 #include <pthread.h>
 #include <vector>
 #include <algorithm>
+
 #include "config.hpp"
 #include "random_generator.hpp"
 void read_data(std::vector<input_type> &data, std::string filename)
@@ -77,6 +77,46 @@ void mapper(const input_type *input, MyPair *pairs, output_type *output)
     // std::cout << "Cluster ID: " << cluster_id << std::endl;
     pairs->key = cluster_id;
     pairs->value = *input;
+    if (cluster_id == -1)
+    {
+        std::cout << "Error: Cluster ID not found" << std::endl;
+    }
+    // if (cluster_id == 0)
+    // {
+    //     std::cout << "Input: " << input->values[0] << " " << input->values[1] << std::endl;
+    //     std::cout << "Output: " << output[0].values[0] << " " << output[0].values[1] << std::endl;
+    //     std::cout << "Distance: " << min_distance << std::endl;
+    // }
+}
+
+void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
+{
+    // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
+
+    // Find new centroid
+    unsigned long long new_values[DIMENSION]; // uint64_cu to avoid overflow
+    for (int i = 0; i < DIMENSION; i++)
+        new_values[i] = 0;
+    int values_size = (int)pairs->values.size();
+    for (int i = 0; i < values_size; i++)
+    {
+        for (int j = 0; j < DIMENSION; j++)
+            new_values[j] += pairs->values[i].values[j];
+    }
+
+    // uint64_cu diff = 0;
+
+    // Take the key of any pair
+    int cluster_idx = pairs[0].key;
+    for (int i = 0; i < DIMENSION; i++)
+    {
+        new_values[i] /= values_size;
+
+        // diff += abs((int)new_values[i] - output[cluster_idx].values[i]);
+        output[cluster_idx].values[i] = new_values[i];
+    }
+
+    // printf("Key: %d, Diff: %llu\n", cluster_idx, diff);
 }
 // Define a struct to hold all parameters
 struct MapParams
@@ -99,20 +139,40 @@ void *map(void *args)
     int start = params->start;
     int end = params->end;
 
-    // // Define iterators for the slice
-    // auto i = data.begin() + start; // Start index (inclusive)
-    // auto j = data.begin() + end;   // End index (exclusive)
-
-    // // Create a new vector containing the slice
-    // std::vector<input_type> slicedVec(i, j);
-
     for (int i = start; i < end; i++)
     {
         // Call the mapper function
         // std::cout << "Mapping " << i << std::endl;
         mapper(&data[i], &pairs->at(i), output);
     }
-    // mapper(&slicedVec, pair, output);
+
+    return NULL;
+}
+struct ReduceParams
+{
+    output_type *output;
+    std::vector<ShuffleAndSort_KeyPairOutput> *pairs;
+    int start;
+    int end;
+};
+void *reduce(void *args)
+{
+    // Cast the void pointer to the struct type
+    ReduceParams *params = static_cast<ReduceParams *>(args);
+
+    // Access the parameters
+    output_type *output = params->output;
+    std::vector<ShuffleAndSort_KeyPairOutput> *pairs = params->pairs;
+    int start = params->start;
+    int end = params->end;
+
+    for (int i = start; i < end; i++)
+    {
+        // Call the reducer function
+        // std::cout << "Reducing " << i << std::endl;
+        reducer(&pairs->at(i), output);
+    }
+    // reducer(&slicedVec, pair, output);
 
     return NULL;
 }
@@ -142,9 +202,11 @@ int main(int argc, char *argv[])
     // =================================================
     // ================== Read data ====================
     // =================================================
+    auto t_before_read = std::chrono::steady_clock::now();
     std::vector<input_type> data;
     read_data(data, filename);
     int inputNum = (int)data.size();
+    std::cout << "==========================================" << std::endl;
     std::cout << "Number of input elements: " << inputNum << std::endl;
     NUM_INPUT = inputNum;
     TOTAL_PAIRS = NUM_INPUT * NUM_PAIRS;
@@ -162,21 +224,25 @@ int main(int argc, char *argv[])
         input[i].values[0] = data[i].values[0];
         input[i].values[1] = data[i].values[1];
     }
+    // free vector
+    data.clear();
+    auto t_after_read = std::chrono::steady_clock::now();
     // choose initial centroids
+    std::cout << "==========================================" << std::endl;
     std::cout << "Initializing centroids" << std::endl;
     initialize(input, output);
 
     // =================================================
-    // =================================================
+    // ============= Setup Multi-threading =============
     int num_mappers = 6;
-    int num_reducers = 1;
-    pthread_t mappers[num_mappers];
-    pthread_t reducers[num_reducers];
-    std::vector<MyPair> map_pairs(inputNum);
+    int num_reducers = 6;
 
     // =================================================
     // ==================== Map ========================
     // =================================================
+    pthread_t mappers[num_mappers];
+    std::vector<MyPair> map_pairs(inputNum);
+    std::cout << "==========================================" << std::endl;
     // Create mappers
     for (int i = 0; i < num_mappers; i++)
     {
@@ -213,11 +279,19 @@ int main(int argc, char *argv[])
     // =================================================
     // ===================== Sort ======================
     // =================================================
+    std::cout << "==========================================" << std::endl;
+    std::cout << "Sorting pairs" << std::endl;
     sort(map_pairs.begin(), map_pairs.end(), PairCompare());
+    // for (int i = inputNum; i >= 0; i--)
+    // {
+    //     std::cout << map_pairs[i];
+    // }
 
     // =================================================
     // ============= Combine unique values =============
     // =================================================
+    std::cout << "==========================================" << std::endl;
+    std::cout << "Combining unique values" << std::endl;
     std::vector<ShuffleAndSort_KeyPairOutput> shuffle_output;
     for (int i = 0; i < inputNum; i++)
     {
@@ -241,7 +315,8 @@ int main(int argc, char *argv[])
         std::cout << "Key: " << shuffle_output[i].key << ", Values: ";
         for (int j = 0; j < 2; j++)
         {
-            std::cout << shuffle_output[i].values[j].values[0] << " " << shuffle_output[i].values[j].values[1] << " ";
+            std::cout << "(" << shuffle_output[i].values[j].values[0] << ", " << shuffle_output[i].values[j].values[1] << ")"
+                      << " ";
         }
         std::cout << std::endl;
     }
@@ -249,21 +324,57 @@ int main(int argc, char *argv[])
     // =================================================
     // =================== Reduce ======================
     // =================================================
+    std::cout << "==========================================" << std::endl;
+    if (num_reducers > (int)shuffle_output.size())
+    {
+        num_reducers = (int)shuffle_output.size();
+    }
+    pthread_t reducers[num_reducers];
+    // Create reducers
+    for (int i = 0; i < num_reducers; i++)
+    {
+        int start = i * (shuffle_output.size() / num_reducers);
+        int end = (i + 1) * (shuffle_output.size() / num_reducers);
+        if (i == num_reducers - 1)
+        {
+            end = shuffle_output.size();
+        }
+        std::cout << "Reducer " << i << " start: " << start << " end: " << end << std::endl;
+        // Create a struct instance with all parameters
+        ReduceParams params;
+        params.output = output;
+        params.pairs = &shuffle_output;
+        params.start = start;
+        params.end = end;
+        // Create a thread for each reducer
+        pthread_create(&reducers[i], NULL, reduce, (void *)&params);
+    }
+    // Wait for all reducers to finish
+    for (int i = 0; i < num_reducers; i++)
+    {
+        pthread_join(reducers[i], NULL);
+        std::cout << "Reducer " << i << " finished" << std::endl;
+    }
+    std::cout << "Reducing done" << std::endl;
 
     // =================================================
     // =================== Output ======================
     // =================================================
-
+    std::cout << "==========================================" << std::endl;
+    std::cout << "Final centroids: " << std::endl;
+    for (int i = 0; i < NUM_OUTPUT; i++)
+    {
+        std::cout << output[i].values[0] << " " << output[i].values[1] << std::endl;
+    }
+    auto t_final = std::chrono::steady_clock::now();
+    std::cout << "==========================================" << std::endl;
+    std::cout << "Time taken to read data: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_after_read - t_before_read).count() << " ms" << std::endl;
+    std::cout << "Time taken for map-reduce: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_final - t_after_read).count() << " ms" << std::endl;
     // Free host memory
+    std::cout << "==========================================" << std::endl;
     std::cout << "Freeing memory" << std::endl;
     free(input);
     free(output);
 
     return 0;
 }
-
-// ===============================================================================
-// ===============================================================================
-// ===============================GPU IMPLEMENTATION==============================
-// ===============================================================================
-// ===============================================================================
