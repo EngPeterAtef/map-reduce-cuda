@@ -260,12 +260,12 @@ void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_
     mapKernel<<<GRID_SIZE, BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
     cudaDeviceSynchronize();
     // error checking
-    cudaError_t error = cudaGetLastError();
-    if (error != cudaSuccess)
-    {
-        fprintf(stderr, "ERROR: %s\n", cudaGetErrorString(error));
-        exit(-1);
-    }
+    // cudaError_t error = cudaGetLastError();
+    // if (error != cudaSuccess)
+    // {
+    //     fprintf(stderr, "ERROR: %s\n", cudaGetErrorString(error));
+    //     exit(-1);
+    // }
 }
 
 /*
