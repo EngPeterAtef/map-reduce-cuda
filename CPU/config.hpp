@@ -2,6 +2,8 @@
 #define MAP_REDUCE_HPP
 #include <iostream>
 
+int num_mappers = 12;
+int num_reducers = 6;
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
 // No. of pairs per input element
@@ -13,11 +15,12 @@ const int NUM_OUTPUT = 10;
 const int DIMENSION = 2;
 // No. of iterations
 const int ITERATIONS = 1000;
+unsigned long long TOTAL_PAIRS;
 
 // Custom types
 struct Vector2D
 {
-    int values[DIMENSION];
+    std::string values[DIMENSION];
 };
 
 // Type declarations for input, output & key-value pairs
@@ -33,16 +36,6 @@ struct MyPair
 {
     Mykey key;
     MyValue value;
-
-    // Printing for debugging
-    friend std::ostream &operator<<(std::ostream &os, const MyPair &pair)
-    {
-        os << "Key: " << pair.key << ", Point: ";
-        for (int i = 0; i < DIMENSION; i++)
-            os << pair.value.values[i] << " ";
-        os << "\n";
-        return os;
-    }
 };
 struct ShuffleAndSort_KeyPairOutput
 {
@@ -61,9 +54,5 @@ struct PairCompare
         return lhs.key < rhs.key;
     }
 };
-
-unsigned long long TOTAL_PAIRS;
-
-void runMapReduce(const input_type *input, output_type *output);
 
 #endif // MAP_REDUCE_HPP
