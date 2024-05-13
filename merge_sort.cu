@@ -27,9 +27,6 @@ __global__ void simple_mergesort(int *data, int *dataAux, int begin, int end, in
     simple_mergesort<<<1, 1, 0, s1>>>(data, dataAux, middle, end, depth + 1);
     cudaStreamDestroy(s1);
 
-    // Waits for children's work.
-    // cudaDeviceSynchronize();
-
     // Merges children's generated partition.
     // Does the merging using the auxiliary memory.
     for (index = begin; index < end; index++)
