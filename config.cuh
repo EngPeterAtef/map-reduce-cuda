@@ -60,6 +60,13 @@ struct PairCompare
         return lhs.key < rhs.key;
     }
 };
+struct PairCompare2
+{
+    __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
+    {
+        return lhs.key <= rhs.key;
+    }
+};
 
 uint64_cu TOTAL_PAIRS;
 

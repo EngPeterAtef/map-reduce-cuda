@@ -7,6 +7,9 @@
 #include <string>
 #include "config.cuh"
 #include "random_generator.hpp"
+#include <cuda_runtime.h>
+
+#define MAX_DEPTH 32
 
 const bool SAVE_TO_FILE = true;
 int GRID_SIZE = (NUM_INPUT + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -149,7 +152,7 @@ int main(int argc, char *argv[])
     int inputNum = (int)data.size();
     NUM_INPUT = inputNum;
     TOTAL_PAIRS = NUM_INPUT * NUM_PAIRS;
-
+    std::cout << "Total number of pairs: " << TOTAL_PAIRS << std::endl;
     // Allocate host memory
     size_t input_size = NUM_INPUT * sizeof(input_type);
     input_type *input = (input_type *)malloc(input_size);
@@ -341,8 +344,95 @@ void runReducer(MyPair *dev_pairs, output_type *dev_output, uint64_cu *TOTAL_PAI
 }
 
 /*
-    Main function to run Map-Reduce program
+    Merge sort kernel
 */
+__global__ void mergesort_kernel(MyPair *data, MyPair *dataAux, int begin, int end, int depth)
+{
+    int middle = (end + begin) / 2;
+    int i0 = begin;
+    int i1 = middle;
+    int index;
+    int n = end - begin;
+
+    // Used to implement recursions using CUDA parallelism.
+    cudaStream_t s, s1;
+    // if the length is less than 2, return
+    if (n < 2)
+    {
+        return;
+    }
+
+    // Create a new block to sort the left part.
+    cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+    mergesort_kernel<<<1, 1, 0, s>>>(data, dataAux, begin, middle, depth + 1);
+    cudaStreamDestroy(s);
+
+    // Create a new block to sort the right part.
+    cudaStreamCreateWithFlags(&s1, cudaStreamNonBlocking);
+    mergesort_kernel<<<1, 1, 0, s1>>>(data, dataAux, middle, end, depth + 1);
+    cudaStreamDestroy(s1);
+
+    // Merges children's generated partition.
+    // Does the merging using the auxiliary memory.
+    for (index = begin; index < end; index++)
+    {
+        // if (i0 < middle && (i1 >= end || data[i0] <= data[i1]))
+        if (i0 < middle && (i1 >= end || PairCompare()(data[i0], data[i1])))
+        {
+            dataAux[index] = data[i0];
+            i0++;
+        }
+        else
+        {
+            dataAux[index] = data[i1];
+            i1++;
+        }
+    }
+
+    // Copies from the auxiliary memory to the main memory.
+    // Note that each thread operates a different partition,
+    // and the auxiliary memory has exact the same size of the main
+    // memory, so the threads never write or read on the same
+    // memory position concurrently, since one must wait it's children
+    // to merge their partitions.
+    for (index = begin; index < end; index++)
+    {
+        data[index] = dataAux[index];
+    }
+}
+/*
+    Merge sort function called by the host
+    params: a - array to be sorted
+            n - size of the array
+    returns: void
+*/
+void gpumerge_sort(MyPair *gpudData, int n)
+{
+    MyPair *gpuAuxData;
+    int left = 0;
+    int right = n;
+
+    // Prepare CDP for the max depth 'MAX_DEPTH'.
+    cudaDeviceSetLimit(cudaLimitDevRuntimeSyncDepth, MAX_DEPTH);
+
+    // Allocate GPU memory.
+    cudaMalloc((void **)&gpuAuxData, n * sizeof(MyPair));
+
+    // Launch on device
+    mergesort_kernel<<<1, 1>>>(gpudData, gpuAuxData, left, right, 0);
+    cudaDeviceSynchronize();
+
+    // Copy from device to host
+    // cudaMemcpy(gpudData, gpudData, n * sizeof(MyPair), cudaMemcpyDeviceToHost);
+
+    cudaFree(gpuAuxData);
+    // cudaDeviceReset causes the driver to clean up all state. While
+    // not mandatory in normal operation, it is good practice.  It is also
+    // needed to ensure correct operation when the application is being
+    // profiled. Calling cudaDeviceReset causes all profile data to be
+    // flushed before the application exits
+    // cudaDeviceReset();
+}
 
 void runMapReduce(const input_type *input, output_type *output)
 {
@@ -412,16 +502,22 @@ void runMapReduce(const input_type *input, output_type *output)
         // Sort Key-Value pairs based on Key
         // This should run on the device itself
         thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
-
+        // gpumerge_sort(dev_pairs, TOTAL_PAIRS);
+        // printf("Shuffle and sort output\n");
         // thrust::copy(dev_pair_thrust_ptr, dev_pair_thrust_ptr + TOTAL_PAIRS, std::ostream_iterator<MyPair>(std::cout, " "));
-
-        // Run reducer kernel on key-value pairs
+        // MyPair *sort_out = (MyPair *)malloc(TOTAL_PAIRS * sizeof(MyPair));
+        // cudaMemcpy(sort_out, dev_pairs, TOTAL_PAIRS * sizeof(MyPair), cudaMemcpyDeviceToHost);
+        // print the output of the sort function
+        // for (int i = 0; i < TOTAL_PAIRS; i++)
+        // {
+        //     std::cout << sort_out[i];
+        // }
+        // // Run reducer kernel on key-value pairs
         runReducer(dev_pairs, dev_output, TOTAL_PAIRS_D);
 
         // Copy new centroids
         // cudaMemcpy(output, dev_output, output_size, cudaMemcpyDeviceToHost);
     }
-
     // Copy outputs from GPU to host
     // Note host memory has already been allocated
     cudaMemcpy(output, dev_output, output_size, cudaMemcpyDeviceToHost);
