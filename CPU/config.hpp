@@ -1,5 +1,5 @@
-#ifndef MAP_REDUCE_HPP
-#define MAP_REDUCE_HPP
+#ifndef CONFIG_HPP
+#define CONFIG_HPP
 #include <iostream>
 
 int num_mappers = 12;
@@ -54,5 +54,4 @@ struct PairCompare
         return lhs.key < rhs.key;
     }
 };
-
-#endif // MAP_REDUCE_HPP
+#endif // CONFIG_HPP
