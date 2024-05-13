@@ -7,8 +7,9 @@
 #include <pthread.h>
 #include <vector>
 #include <algorithm>
-#include "config.hpp"
-#include "kmeans.hpp"
+
+// #include "kmeans.hpp"
+#include "wordcount.hpp"
 
 void read_data(std::vector<input_type> &data, std::string filename)
 {
@@ -133,28 +134,12 @@ int main(int argc, char *argv[])
     std::cout << "==========================================" << std::endl;
     std::cout << "Number of input elements: " << inputNum << std::endl;
     NUM_INPUT = inputNum;
-    TOTAL_PAIRS = NUM_INPUT * NUM_PAIRS;
-
-    // size_t output_size = NUM_OUTPUT * sizeof(output_type);
-    // output_type *output = (output_type *)malloc(output_size);
     // use vectors to store output
-    std::vector<output_type> output(NUM_OUTPUT);
-
-    // copy from vector to array
-    // for (int i = 0; i < inputNum; i++)
-    // {
-    //     for (int j = 0; j < DIMENSION; j++)
-    //     {
-    //         input[i].values[j] = data[i].values[j];
-    //     }
-    // }
-    // free vector
-    // data.clear();
+    std::vector<output_type> *output = new std::vector<output_type>;
     auto t_after_read = std::chrono::steady_clock::now();
-    // choose initial centroids
+    // initial
     // std::cout << "==========================================" << std::endl;
-    // std::cout << "Initializing centroids" << std::endl;
-    initialize(data, output);
+    initialize(data, *output);
     // =================================================
     // ============= Setup Multi-threading =============
     // =================================================
@@ -170,6 +155,8 @@ int main(int argc, char *argv[])
 
         pthread_t mappers[num_mappers];
         std::vector<MyPair> map_pairs(inputNum);
+        std::vector<MapParams *> map_params_list(num_mappers); // Store pointers to dynamically allocated MapParams instances
+
         // std::cout << "==========================================" << std::endl;
         // Create mappers
         for (int i = 0; i < num_mappers; i++)
@@ -182,19 +169,23 @@ int main(int argc, char *argv[])
             }
             // std::cout << "Mapper " << i << " start: " << start << " end: " << end << std::endl;
             // Create a struct instance with all parameters
-            MapParams params;
-            params.data = &data;
-            params.output = &output;
-            params.pairs = &map_pairs;
-            params.start = start;
-            params.end = end;
+            // Dynamically allocate memory for each MapParams instance
+            MapParams *mapParams = new MapParams;
+            mapParams->data = &data;
+            mapParams->output = output;
+            mapParams->pairs = &map_pairs;
+            mapParams->start = start;
+            mapParams->end = end;
+            map_params_list[i] = mapParams;
             // Create a thread for each mapper
-            pthread_create(&mappers[i], NULL, map, (void *)&params);
+            pthread_create(&mappers[i], NULL, map, (void *)mapParams);
         }
         // Wait for all mappers to finish
         for (int i = 0; i < num_mappers; i++)
         {
             pthread_join(mappers[i], NULL);
+            delete map_params_list[i];
+
             // std::cout << "Mapper " << i << " finished" << std::endl;
         }
         // std::cout << "Mapping done" << std::endl;
@@ -208,11 +199,15 @@ int main(int argc, char *argv[])
         // ===================== Sort ======================
         // =================================================
         // std::cout << "==========================================" << std::endl;
+        // for (int i = 0; i < map_pairs.size(); i++)
+        // {
+        //     std::cout << map_pairs[i] << std::endl;
+        // }
         // std::cout << "Sorting pairs" << std::endl;
         sort(map_pairs.begin(), map_pairs.end(), PairCompare());
-        // for (int i = inputNum; i >= 0; i--)
+        // for (int i = 0; i < map_pairs.size(); i++)
         // {
-        //     std::cout << map_pairs[i];
+        //     std::cout << map_pairs[i] << std::endl;
         // }
 
         // =================================================
@@ -220,7 +215,7 @@ int main(int argc, char *argv[])
         // =================================================
         // std::cout << "==========================================" << std::endl;
         // std::cout << "Combining unique values" << std::endl;
-        std::vector<ShuffleAndSort_KeyPairOutput> shuffle_output;
+        std::vector<ShuffleAndSort_KeyPairOutput> *shuffle_output = new std::vector<ShuffleAndSort_KeyPairOutput>;
         for (int i = 0; i < inputNum; i++)
         {
             if (i == 0 || map_pairs[i].key != map_pairs[i - 1].key)
@@ -228,61 +223,63 @@ int main(int argc, char *argv[])
                 ShuffleAndSort_KeyPairOutput current_pair;
                 current_pair.key = map_pairs[i].key;
                 current_pair.values.push_back(map_pairs[i].value);
-                shuffle_output.push_back(current_pair);
+                shuffle_output->push_back(current_pair);
             }
             else
             {
-                shuffle_output.back().values.push_back(map_pairs[i].value);
+                shuffle_output->back().values.push_back(map_pairs[i].value);
             }
         }
         // // Add the last pair to the output vector
         // shuffle_output.push_back(current_pair);
         // print pairs
-        // for (int i = 0; i < shuffle_output.size(); i++)
+        // std::cout << "Shuffle output: " << std::endl;
+        // for (int i = 0; i < shuffle_output->size(); i++)
         // {
-        //     std::cout << "Key: " << shuffle_output[i].key << ", Values: ";
-        //     for (int j = 0; j < 2; j++)
-        //     {
-        //         std::cout << "(" << shuffle_output[i].values[j].values[0] << ", " << shuffle_output[i].values[j].values[1] << ")"
-        //                   << " ";
-        //     }
-        //     std::cout << std::endl;
+        //     std::cout << (*shuffle_output)[i] << std::endl;
         // }
 
         // =================================================
         // =================== Reduce ======================
         // =================================================
         // std::cout << "==========================================" << std::endl;
-        if (num_reducers > (int)shuffle_output.size())
+        if (num_reducers > (int)shuffle_output->size())
         {
-            num_reducers = (int)shuffle_output.size();
+            num_reducers = (int)shuffle_output->size();
         }
         pthread_t reducers[num_reducers];
+        std::vector<ReduceParams *> reduce_params_list(num_reducers); // Store pointers to dynamically allocated MapParams instances
+
         // Create reducers
         for (int i = 0; i < num_reducers; i++)
         {
-            int start = i * (shuffle_output.size() / num_reducers);
-            int end = (i + 1) * (shuffle_output.size() / num_reducers);
+            int start = i * (shuffle_output->size() / num_reducers);
+            int end = (i + 1) * (shuffle_output->size() / num_reducers);
             if (i == num_reducers - 1)
             {
-                end = shuffle_output.size();
+                end = shuffle_output->size();
             }
             // std::cout << "Reducer " << i << " start: " << start << " end: " << end << std::endl;
             // Create a struct instance with all parameters
-            ReduceParams params;
-            params.output = &output;
-            params.pairs = &shuffle_output;
-            params.start = start;
-            params.end = end;
+            ReduceParams *reduceParams = new ReduceParams;
+            reduceParams->output = output;
+            reduceParams->pairs = shuffle_output;
+            reduceParams->start = start;
+            reduceParams->end = end;
+            reduce_params_list[i] = reduceParams;
             // Create a thread for each reducer
-            pthread_create(&reducers[i], NULL, reduce, (void *)&params);
+            pthread_create(&reducers[i], NULL, reduce, (void *)reduceParams);
         }
         // Wait for all reducers to finish
         for (int i = 0; i < num_reducers; i++)
         {
             pthread_join(reducers[i], NULL);
+            delete reduce_params_list[i];
+
             // std::cout << "Reducer " << i << " finished" << std::endl;
         }
+        delete shuffle_output;
+
         // std::cout << "Reducing done" << std::endl;
     }
 
@@ -290,18 +287,19 @@ int main(int argc, char *argv[])
     // =================== Output ======================
     // =================================================
     std::cout << "==========================================" << std::endl;
-    std::cout << "Final centroids: " << std::endl;
-    for (int i = 0; i < NUM_OUTPUT; i++)
+    std::cout << "Final output: " << std::endl;
+    int output_size = (int)(*output).size();
+    for (int i = 0; i < output_size; i++)
     {
-        std::cout << output[i].values[0] << " " << output[i].values[1] << std::endl;
+        std::cout << (*output)[i] << std::endl;
     }
     auto t_final = std::chrono::steady_clock::now();
     // save output to file
     std::ofstream output_file;
     output_file.open(filename + "_output.txt");
-    for (int i = 0; i < NUM_OUTPUT; i++)
+    for (int i = 0; i < output_size; i++)
     {
-        output_file << output[i].values[0] << " " << output[i].values[1] << std::endl;
+        output_file << (*output)[i] << std::endl;
     }
     output_file.close();
 
@@ -310,11 +308,6 @@ int main(int argc, char *argv[])
     std::cout << "==========================================" << std::endl;
     std::cout << "Time taken to read data: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_after_read - t_before_read).count() << " ms" << std::endl;
     std::cout << "Time taken for map-reduce: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_final - t_after_read).count() << " ms" << std::endl;
-    // // Free host memory
-    // std::cout << "==========================================" << std::endl;
-    // std::cout << "Freeing memory" << std::endl;
-    // free(input);
-    // free(output);
-
+    delete output;
     return 0;
 }

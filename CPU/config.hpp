@@ -28,8 +28,8 @@ using input_type = Vector2D;  // Datapoint (or vector) read from the text file
 using output_type = Vector2D; // Outputs are the cluster centroids
 
 // So each point will get associated with a cluster (with id -> key)
-using Mykey = int;        // Cluster that the point corresponds to
-using MyValue = Vector2D; // Point associated with the cluster
+using Mykey = std::string; // Cluster that the point corresponds to
+using MyValue = Vector2D;  // Point associated with the cluster
 
 // Pair type definition
 struct MyPair
