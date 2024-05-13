@@ -9,3 +9,7 @@ merge_sort s1.txt
 nvcc -O3 -dc int_merge_sort.cu
 nvcc -O3 -o int_merge_sort int_merge_sort.obj
 int_merge_sort
+====================================
+nvcc -O3 -dc .\new_merge_sort.cu
+nvcc -O3 -o new_merge_sort new_merge_sort.obj
+new_merge_sort
