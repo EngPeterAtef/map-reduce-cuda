@@ -36,13 +36,11 @@ struct Vector2D
     }
 };
 
-// Type declarations for input, output & key-value pairs
-using input_type = Vector2D;  // Datapoint (or vector) read from the text file
-using output_type = Vector2D; // Outputs are the cluster centroids
+using input_type = Vector2D;
+using output_type = Vector2D;
 
-// So each point will get associated with a cluster (with id -> key)
-using Mykey = int;        // Cluster that the point corresponds to
-using MyValue = Vector2D; // Point associated with the cluster
+using Mykey = int;
+using MyValue = Vector2D;
 
 // Pair type definition
 struct MyPair
@@ -65,10 +63,6 @@ struct ShuffleAndSort_KeyPairOutput
     std::vector<MyValue> values;
 };
 
-/*
-    Comparision operator for comparing between 2 KeyValuePairs
-    Returns true if first pair has key less than the second
-*/
 struct PairCompare
 {
     bool operator()(const MyPair &lhs, const MyPair &rhs)
@@ -156,8 +150,6 @@ void mapper(const input_type *input, MyPair *pairs, const std::vector<output_typ
 
 void reducer(ShuffleAndSort_KeyPairOutput *pairs, std::vector<output_type> &output)
 {
-    // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
-
     // Find new centroid
     int new_values[DIMENSION];
     for (int i = 0; i < DIMENSION; i++)
@@ -184,20 +176,15 @@ void reducer(ShuffleAndSort_KeyPairOutput *pairs, std::vector<output_type> &outp
         }
     }
 
-    // uint64_cu diff = 0;
-
     // Take the key of any pair
     int cluster_idx = pairs[0].key;
     for (int i = 0; i < DIMENSION; i++)
     {
         new_values[i] /= values_size;
 
-        // diff += abs((int)new_values[i] - output[cluster_idx].values[i]);
         // convert to string
         std::string new_val = std::to_string(new_values[i]);
         output[cluster_idx].values[i] = new_val;
     }
-
-    // printf("Key: %d, Diff: %llu\n", cluster_idx, diff);
 }
 #endif // KMEANS_HPP

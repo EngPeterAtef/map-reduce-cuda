@@ -17,9 +17,8 @@ const int DIMENSION = 2;
 const int ITERATIONS = 1;
 unsigned long long TOTAL_PAIRS;
 
-// So each point will get associated with a cluster (with id -> key)
-using Mykey = std::string; // Cluster that the point corresponds to
-using MyValue = int;       // Point associated with the cluster
+using Mykey = std::string;
+using MyValue = int;
 // Custom types
 struct Vector2D
 {
@@ -54,14 +53,9 @@ struct ShuffleAndSort_KeyPairOutput
         return os;
     }
 };
-// Type declarations for input, output & key-value pairs
-using input_type = Vector2D; // Datapoint (or vector) read from the text file
-using output_type = MyPair;  // Outputs are the cluster centroids
+using input_type = Vector2D;
+using output_type = MyPair;
 
-/*
-    Comparision operator for comparing between 2 KeyValuePairs
-    Returns true if first pair has key less than the second
-*/
 struct PairCompare
 {
     bool operator()(const MyPair &lhs, const MyPair &rhs)
