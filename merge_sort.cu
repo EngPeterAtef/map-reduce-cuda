@@ -147,6 +147,8 @@ int main(int argc, char *argv[])
 
     // Close the file
     file.close();
+    // delete the data vector
+    data.clear();
 
     int inputNum = (int)data.size();
     NUM_INPUT = inputNum;
