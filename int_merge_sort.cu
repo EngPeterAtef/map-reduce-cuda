@@ -65,10 +65,10 @@ void gpumerge_sort(int *a, int n)
     // Query device properties to get the block size
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
-    int max_threads_per_block = prop.maxThreadsPerBlock;
+    // int max_threads_per_block = prop.maxThreadsPerBlock;
 
     // Prepare CDP for the max depth 'MAX_DEPTH'.
-    cudaDeviceSetLimit(cudaLimitDevRuntimeSyncDepth, MAX_DEPTH);
+    // cudaDeviceSetLimit(cudaLimitDevRuntimeSyncDepth, n * n);
 
     // Allocate GPU memory.
     cudaMalloc((void **)&gpuData, n * sizeof(int));
@@ -76,7 +76,7 @@ void gpumerge_sort(int *a, int n)
     cudaMemcpy(gpuData, a, n * sizeof(int), cudaMemcpyHostToDevice);
 
     // Launch on device
-    simple_mergesort<<<1, max_threads_per_block>>>(gpuData, gpuAuxData, left, right, 0);
+    simple_mergesort<<<1, 1>>>(gpuData, gpuAuxData, left, right, 0);
     cudaDeviceSynchronize();
 
     // Copy back
@@ -95,16 +95,22 @@ void gpumerge_sort(int *a, int n)
 int main()
 {
     // create array of size 5000
-    int a[10];
+    int *a = (int *)malloc(10 * sizeof(int));
     for (int i = 0; i < 10; i++)
     {
         a[i] = 10 - i;
     }
     int n = sizeof(a) / sizeof(a[0]);
-    gpumerge_sort(a, n);
+    // std::cout << "before" << n << std::endl;
     for (int i = 0; i < n; i++)
     {
         printf("%d ", a[i]);
     }
+    gpumerge_sort(a, n);
+    // std::cout << "after" << n << std::endl;
+    // for (int i = 0; i < n; i++)
+    // {
+    //     printf("%d ", a[i]);
+    // }
     return 0;
 }

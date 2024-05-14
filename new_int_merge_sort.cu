@@ -1,9 +1,4 @@
-#include <cuda_runtime.h>
 #include <iostream>
-#include "config.cuh"
-#include <fstream>
-#include <chrono>
-#include <vector>
 // C++ program for Merge Sort
 using namespace std;
 
@@ -17,7 +12,7 @@ params:
     int subArrayOne: the size of the left array
     int subArrayTwo: the size of the right array
 */
-__device__ void mergeSequential(MyPair *array, MyPair *leftArray, MyPair *rightArray, int subArrayOne, int subArrayTwo)
+__device__ void mergeSequential(int *array, int *leftArray, int *rightArray, int subArrayOne, int subArrayTwo)
 {
     auto indexOfSubArrayOne = 0, indexOfSubArrayTwo = 0;
     // the start of the merged array in the original array
@@ -25,7 +20,7 @@ __device__ void mergeSequential(MyPair *array, MyPair *leftArray, MyPair *rightA
     // Merge the temp arrays back into array[left..right]
     while (indexOfSubArrayOne < subArrayOne && indexOfSubArrayTwo < subArrayTwo)
     {
-        if (PairCompare2()(leftArray[indexOfSubArrayOne], rightArray[indexOfSubArrayTwo]))
+        if (leftArray[indexOfSubArrayOne] <= rightArray[indexOfSubArrayTwo])
         {
             array[indexOfMergedArray] = leftArray[indexOfSubArrayOne];
             indexOfSubArrayOne++;
@@ -57,7 +52,7 @@ __device__ void mergeSequential(MyPair *array, MyPair *leftArray, MyPair *rightA
     }
 }
 
-__device__ int coRank(MyPair *leftArray, MyPair *rightArray, int subArrayOne, int subArrayTwo, int k)
+__device__ int coRank(int *leftArray, int *rightArray, int subArrayOne, int subArrayTwo, int k)
 {
     int iLow = max(0, k - subArrayTwo);
     int iHigh = min(subArrayOne, k);
@@ -68,13 +63,13 @@ __device__ int coRank(MyPair *leftArray, MyPair *rightArray, int subArrayOne, in
         int i = (iLow + iHigh) / 2;
         int j = k - i;
         // our guess is too small, we must increase i
-        if (i < subArrayOne && j > 0 && PairCompare()(leftArray[i], rightArray[j - 1]))
+        if (i < subArrayOne && j > 0 && leftArray[i] < rightArray[j - 1])
         {
             // i is too small, must increase it
             iLow = i + 1;
         }
         // our guess is too big, we must decrease i
-        else if (i > 0 && j < subArrayTwo && PairCompare()(rightArray[j], leftArray[i - 1]))
+        else if (i > 0 && j < subArrayTwo && leftArray[i - 1] > rightArray[j])
         {
             // i is too big, must decrease it
             iHigh = i - 1;
@@ -97,7 +92,7 @@ __device__ int coRank(MyPair *leftArray, MyPair *rightArray, int subArrayOne, in
         int const mid: the middle index
         int const right: the right index
 */
-__global__ void merge(MyPair array[], MyPair *leftArray, MyPair *rightArray, int *subArrayOne, int *subArrayTwo)
+__global__ void merge(int array[], int *leftArray, int *rightArray, int *subArrayOne, int *subArrayTwo)
 {
     int totalSize = *subArrayOne + *subArrayTwo;
     int numberThreads = blockDim.x * gridDim.x;
@@ -122,7 +117,7 @@ __global__ void merge(MyPair array[], MyPair *leftArray, MyPair *rightArray, int
 }
 
 // Function to print an array
-void printArray(MyPair A[], int size)
+void printArray(int A[], int size)
 {
     for (int i = 0; i < size; i++)
         cout << A[i] << " ";
@@ -130,7 +125,7 @@ void printArray(MyPair A[], int size)
 }
 // begin is for left index and end is right index
 // of the sub-array of arr to be sorted
-void mergeSort(MyPair *array, int const begin, int const end, int n)
+void mergeSort(int *array, int const begin, int const end, int n)
 {
     if (begin >= end)
     {
@@ -147,28 +142,28 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
     int arraySize = end - begin + 1;
 
     // Create temp arrays
-    auto *leftArray = new MyPair[subArrayOne],
-         *rightArray = new MyPair[subArrayTwo];
+    auto *leftArray = new int[subArrayOne],
+         *rightArray = new int[subArrayTwo];
 
     // Copy data to temp arrays leftArray[] and rightArray[]
     for (auto i = 0; i < subArrayOne; i++)
         leftArray[i] = array[begin + i];
     for (auto j = 0; j < subArrayTwo; j++)
         rightArray[j] = array[mid + 1 + j];
-    MyPair *d_array;
-    MyPair *d_leftArray, *d_rightArray;
+    int *d_array;
+    int *d_leftArray, *d_rightArray;
     int *d_subArrayOne, *d_subArrayTwo;
-    cudaMalloc(&d_array, n * sizeof(MyPair));
-    cudaMalloc(&d_leftArray, subArrayOne * sizeof(MyPair));
-    cudaMalloc(&d_rightArray, subArrayTwo * sizeof(MyPair));
+    cudaMalloc(&d_array, n * sizeof(int));
+    cudaMalloc(&d_leftArray, subArrayOne * sizeof(int));
+    cudaMalloc(&d_rightArray, subArrayTwo * sizeof(int));
     cudaMalloc(&d_subArrayOne, sizeof(int));
     cudaMalloc(&d_subArrayTwo, sizeof(int));
     cudaDeviceSynchronize();
     // copy the array to the device
-    cudaMemcpy(d_array, array, n * sizeof(MyPair), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_array, array, n * sizeof(int), cudaMemcpyHostToDevice);
     // copy the leftArray and the rightArray to the device
-    cudaMemcpy(d_leftArray, leftArray, subArrayOne * sizeof(MyPair), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_rightArray, rightArray, subArrayTwo * sizeof(MyPair), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_leftArray, leftArray, subArrayOne * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_rightArray, rightArray, subArrayTwo * sizeof(int), cudaMemcpyHostToDevice);
     // copy the size of the leftArray and the rightArray to the device
     cudaMemcpy(d_subArrayOne, &subArrayOne, sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_subArrayTwo, &subArrayTwo, sizeof(int), cudaMemcpyHostToDevice);
@@ -182,7 +177,7 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
     cudaDeviceSynchronize();
     // cout << "Array size: " << arraySize << endl;
     // copy the sorted array from the device to the host
-    cudaMemcpy(array, d_array, n * sizeof(MyPair), cudaMemcpyDeviceToHost);
+    cudaMemcpy(array, d_array, n * sizeof(int), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     // free the memory
     cudaFree(d_array);
@@ -194,83 +189,86 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
     delete[] rightArray;
 }
 
-int main(int argc, char *argv[])
+// UTILITY FUNCTIONS
+void mergeGpu(int *a, int *b, int *c, int sizeA, int sizeB)
 {
+    int *d_a, *d_b, *d_c;
+    int *d_sizeA, *d_sizeB;
+    cudaMalloc(&d_a, sizeA * sizeof(int));
+    cudaMalloc(&d_b, sizeB * sizeof(int));
+    cudaMalloc(&d_c, (sizeA + sizeB) * sizeof(int));
+    cudaMalloc(&d_sizeA, sizeof(int));
+    cudaMalloc(&d_sizeB, sizeof(int));
+    cudaDeviceSynchronize();
+    cudaMemcpy(d_a, a, sizeA * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeB * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_sizeA, &sizeA, sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_sizeB, &sizeB, sizeof(int), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
 
-    using millis = std::chrono::milliseconds;
-    using std::string;
-    using std::chrono::duration_cast;
-    using std::chrono::steady_clock;
+    // Query device properties to get the block size
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
 
-    if (argc != 2)
+    int numberBlocks = ceil((float)(sizeA + sizeB) / (float)prop.maxThreadsPerBlock);
+    merge<<<numberBlocks, prop.maxThreadsPerBlock>>>(d_c, d_a, d_b, d_sizeA, d_sizeB);
+    cudaDeviceSynchronize();
+    // copy data from device to host
+    cudaMemcpy(c, d_c, (sizeA + sizeB) * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    cudaDeviceReset();
+}
+void testMerge()
+{
+    // create array of size 2500
+    int n = 2500;
+    // take n as input
+    cout << "Enter the size of the array: ";
+    cin >> n;
+    int *a = (int *)malloc(n * sizeof(int));
+    int *b = (int *)malloc(n * sizeof(int));
+    int *c = (int *)malloc(2 * n * sizeof(int));
+    for (int i = 0; i < n; i++)
     {
-        printf("Requires 1 argument, name of input textfile\n");
-        exit(1);
+        a[i] = i + 1;
+        b[i] = i + 1;
     }
+    // printArray(a, n);
+    cout << "Size: " << n << endl;
+    // cout << "Given array is \n";
+    // printArray(a, n);
+    mergeGpu(a, b, c, n, n);
+    // mergeSort(a, 0, n - 1);
 
-    string filename = argv[1];
+    cout << "\nSorted array is \n";
+    printArray(c, 2 * n);
+}
 
-    auto t_seq_1 = steady_clock::now();
-
-    // Read data from text file
-    std::ifstream file(filename);
-    std::vector<std::vector<int>> data; // Vector of vectors to store the data
-    cout << "abl al file" << endl;
-    if (!file.is_open())
+int main()
+{
+    // testMerge();
+    // create array of size 2500
+    int n = 2500;
+    // take n as input
+    cout << "Enter the size of the array: ";
+    cin >> n;
+    int *a = (int *)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++)
     {
-        std::cout << "Could not open file" << std::endl;
-        return 1;
+        a[i] = rand() % (n / 2);
     }
+    // printArray(a, n);
+    // cout << "Size: " << n << endl;
+    // cout << "Given array is \n";
+    // printArray(a, n);
 
-    int num1, num2;
-
-    // Read each line in the file
-    while (file >> num1 >> num2)
-    {
-        // Create a vector to store the two numbers in the row
-        std::vector<int> row = {num1, num2};
-
-        // Add the row to the data vector
-        data.push_back(row);
-    }
-
-    // Close the file
-    file.close();
-    int inputNum = (int)data.size();
-
-    NUM_INPUT = inputNum;
-    TOTAL_PAIRS = NUM_INPUT * NUM_PAIRS;
-
-    // Allocate host memory
-    size_t input_size = NUM_INPUT * sizeof(input_type);
-    input_type *input = (input_type *)malloc(input_size);
-
-    size_t output_size = NUM_OUTPUT * sizeof(output_type);
-    output_type *output = (output_type *)malloc(output_size);
-    cout << "b3d al file" << endl;
-
-    // copy from vector to array
-    for (int i = 0; i < inputNum; i++)
-    {
-        input[i].values[0] = data[i][0];
-        input[i].values[1] = data[i][1];
-    }
-    cout << "ba3d al malloc" << endl;
-    MyPair *pairs;
-    pairs = (MyPair *)malloc(TOTAL_PAIRS * sizeof(MyPair));
-    for (int i = 0; i < inputNum; i++)
-    {
-        MyPair pair;
-        pair.key = i % NUM_OUTPUT;
-        pair.value = input[i];
-        pairs[i] = pair;
-    }
-    // Allocate memory for key-value pairs
-    cout << "inputNum: " << inputNum << endl;
-    mergeSort(pairs, 0, inputNum - 1, inputNum);
+    mergeSort(a, 0, n - 1, n);
     cudaDeviceReset();
 
     cout << "\nSorted array is \n";
-    printArray(pairs, inputNum);
+    printArray(a, n);
     return 0;
 }
