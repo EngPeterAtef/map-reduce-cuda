@@ -10,3 +10,6 @@
 *.exp
 *.output
 *.lib
+*.o
+kmeans
+wordcount
