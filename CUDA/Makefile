@@ -6,11 +6,16 @@ TARGETS := kmeans
 SOURCES := map_reduce.cu
 # HEADERS := config.cuh random_generator.hpp
 KMEANS_HEADERS := kmeans.cuh random_generator.hpp
+WORDCOUNT_HEADERS := wordcount.cuh
 OBJECTS := $(SOURCES:.cu=.o)
 
 all: $(TARGETS)
 
 kmeans: $(SOURCES) $(KMEANS_HEADERS)
+	$(NVCC) -O3 -dc $(SOURCES)
+	$(NVCC) -O3 -o $@ $(OBJECTS)
+	
+wordcount: $(SOURCES) $(WORDCOUNT_HEADERS)
 	$(NVCC) -O3 -dc $(SOURCES)
 	$(NVCC) -O3 -o $@ $(OBJECTS)
 
