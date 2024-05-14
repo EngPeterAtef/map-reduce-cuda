@@ -2,7 +2,10 @@
 #define MAP_REDUCE_CUH
 
 // GPU parameters
-const int BLOCK_SIZE = 1024;
+const int MAP_BLOCK_SIZE = 512;
+const int REDUCE_BLOCK_SIZE = 32;
+int MAP_GRID_SIZE;
+int REDUCE_GRID_SIZE;
 
 using uint64_cu = unsigned long long int;
 
@@ -11,12 +14,12 @@ uint64_cu NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
 // Total No. of output values (K - No. of clusters)
-const int NUM_OUTPUT = 15;
+const int NUM_OUTPUT = 3;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
-const int ITERATIONS = 1000;
+const int ITERATIONS = 10;
 
 // Custom types
 struct Vector2D
