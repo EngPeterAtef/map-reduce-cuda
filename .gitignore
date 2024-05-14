@@ -11,5 +11,3 @@
 *.output
 *.lib
 *.o
-kmeans
-wordcount
