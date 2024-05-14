@@ -7,8 +7,8 @@
 
 #include "random_generator.hpp"
 
-int num_mappers = 12;
-int num_reducers = 6;
+int num_mappers = 2;
+int num_reducers = 1;
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
 
