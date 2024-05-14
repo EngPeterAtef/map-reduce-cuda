@@ -8,8 +8,8 @@
 #include <vector>
 #include <algorithm>
 
-// #include "kmeans.hpp"
-#include "wordcount.hpp"
+#include "kmeans.hpp"
+// #include "wordcount.hpp"
 
 void read_data(std::vector<input_type> &data, std::string filename)
 {
