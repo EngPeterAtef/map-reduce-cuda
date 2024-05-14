@@ -5,8 +5,9 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include "kmeans.cuh"
 #include <cuda_runtime.h>
+#include "kmeans.cuh"
+// #include "wordcount.cuh"
 
 #define MAX_DEPTH 32
 
@@ -15,7 +16,7 @@ using std::chrono::duration_cast;
 using std::chrono::steady_clock;
 
 void runMapReduce(const input_type *input, output_type *output);
-void readData(std::vector<input_type> &data, std::string filename);
+void readData(input_type *&input, std::string filename, int &inputNum);
 void saveData(const output_type *output, std::string filename);
 void printDeviceProperties();
 void printMapReduceGPUParams(int mapBlockSize, int mapGridSize, int reduceBlockSize, int reduceGridSize);
@@ -33,9 +34,9 @@ int main(int argc, char *argv[])
 
     auto t_seq_1 = steady_clock::now();
 
-    std::vector<input_type> data;
-    readData(data, filename);
-    int inputNum = (int)data.size();
+    int inputNum;
+    input_type *input;
+    readData(input, filename, inputNum);
     NUM_INPUT = inputNum;
     TOTAL_PAIRS = NUM_INPUT * NUM_PAIRS;
 
@@ -48,20 +49,10 @@ int main(int argc, char *argv[])
     std::cout << "Total number of pairs: " << TOTAL_PAIRS << std::endl;
 
     // Allocate host memory
-    size_t input_size = NUM_INPUT * sizeof(input_type);
-    input_type *input = (input_type *)malloc(input_size);
 
     size_t output_size = NUM_OUTPUT * sizeof(output_type);
     output_type *output = (output_type *)malloc(output_size);
 
-    // copy from vector to array
-    for (int i = 0; i < inputNum; i++)
-    {
-        for (int j = 0; j < DIMENSION; j++)
-        {
-            input[i].values[j] = data[i].values[j];
-        }
-    }
     std::cout << "Running Initialization..." << std::endl;
     // Now chose initial centroids
     initialize(input, output);
@@ -78,12 +69,7 @@ int main(int argc, char *argv[])
     // Iterate through the output array
     for (int i = 0; i < NUM_OUTPUT; i++)
     {
-        for (int j = 0; j < DIMENSION; j++)
-        {
-            std::cout << output[i].values[j] << " ";
-        }
-
-        std::cout << std::endl;
+        std::cout << output[i] << std::endl;
     }
 
     saveData(output, filename);
@@ -130,9 +116,6 @@ __global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *d
     }
 }
 
-/*
-    Call Mapper kernel with the required grid, blocks
-*/
 void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D)
 {
     mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
@@ -430,12 +413,22 @@ void runMapReduce(const input_type *input, output_type *output)
     // Now run K Means for the specified iterations
     for (int iter = 0; iter < ITERATIONS; iter++)
     {
+        MyPair *host_pairs;
         // ================== MAP ==================
         runMapper(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
+        // copy to host to print
+        host_pairs = (MyPair *)malloc(pair_size);
+        // cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
+        // for (int i = 0; i < TOTAL_PAIRS; i++)
+        // {
+        //     std::cout << host_pairs[i];
+        // }
+        // std::cout << std::endl;
+        // free(host_pairs);
 
         // ================== SORT ==================
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
-        MyPair *host_pairs = (MyPair *)malloc(pair_size);
+        host_pairs = (MyPair *)malloc(pair_size);
         cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
         mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
 
@@ -454,8 +447,10 @@ void runMapReduce(const input_type *input, output_type *output)
 // ===============================================================
 // ==========================UTILS================================
 // ===============================================================
-void readData(std::vector<input_type> &data, std::string filename)
+void readData(input_type *&input, std::string filename, int &inputNum)
 {
+    std::vector<input_type> data;
+
     // Read data from text file
     std::ifstream file(filename);
 
@@ -472,12 +467,12 @@ void readData(std::vector<input_type> &data, std::string filename)
         if (!line.empty())
         {
             std::istringstream iss(line);
-            input_type input;
-            for (int i = 0; i < DIMENSION && (iss >> input.values[i]); ++i)
+            input_type tempInput;
+            for (int i = 0; i < DIMENSION && (iss >> tempInput.values[i]); ++i)
             {
                 // Read DIMENSION values from the line
             }
-            data.push_back(input); // Add the row to the data vector
+            data.push_back(tempInput); // Add the row to the data vector
         }
     }
 
@@ -490,6 +485,28 @@ void readData(std::vector<input_type> &data, std::string filename)
     //     for (int j = 0; j < DIMENSION; j++)
     //     {
     //         std::cout << data[i].values[j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
+    // Copy from vector to array
+    inputNum = (int)data.size();
+    size_t input_size = inputNum * sizeof(input_type);
+    input = (input_type *)malloc(input_size);
+    // copy from vector to array
+    for (int i = 0; i < inputNum; i++)
+    {
+        for (int j = 0; j < DIMENSION; j++)
+        {
+            input[i].values[j] = data[i].values[j];
+        }
+    }
+    data.clear();
+    // print the input
+    // for (int i = 0; i < inputNum; i++)
+    // {
+    //     for (int j = 0; j < DIMENSION; j++)
+    //     {
+    //         std::cout << input[i].values[j] << " ";
     //     }
     //     std::cout << std::endl;
     // }
@@ -508,11 +525,7 @@ void saveData(const output_type *output, std::string filename)
     }
     for (int i = 0; i < NUM_OUTPUT; i++)
     {
-        for (int j = 0; j < DIMENSION; j++)
-        {
-            output_file << output[i].values[j] << " ";
-        }
-        output_file << "\n";
+        output_file << output[i] << "\n";
     }
     output_file.close();
 }
