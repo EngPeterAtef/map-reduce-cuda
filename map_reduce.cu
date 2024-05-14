@@ -507,7 +507,7 @@ void printArray(MyPair A[], int size)
 }
 // begin is for left index and end is right index
 // of the sub-array of arr to be sorted
-void mergeSort(MyPair *array, int const begin, int const end, int n)
+void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_array)
 {
     if (begin >= end)
     {
@@ -515,8 +515,8 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
     }
 
     int mid = begin + (end - begin) / 2;
-    mergeSort(array, begin, mid, n);
-    mergeSort(array, mid + 1, end, n);
+    mergeSort(array, begin, mid, n, d_array);
+    mergeSort(array, mid + 1, end, n, d_array);
     // cout << "Merging: " << begin << " " << mid << " " << end << endl;
     // divide the array into 2 subarrays
     int const subArrayOne = mid - begin + 1;
@@ -532,17 +532,17 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
         leftArray[i] = array[begin + i];
     for (auto j = 0; j < subArrayTwo; j++)
         rightArray[j] = array[mid + 1 + j];
-    MyPair *d_array;
+    // MyPair *d_array;
     MyPair *d_leftArray, *d_rightArray;
     int *d_subArrayOne, *d_subArrayTwo;
-    cudaMalloc(&d_array, n * sizeof(MyPair));
+    // cudaMalloc(&d_array, n * sizeof(MyPair));
     cudaMalloc(&d_leftArray, subArrayOne * sizeof(MyPair));
     cudaMalloc(&d_rightArray, subArrayTwo * sizeof(MyPair));
     cudaMalloc(&d_subArrayOne, sizeof(int));
     cudaMalloc(&d_subArrayTwo, sizeof(int));
     cudaDeviceSynchronize();
     // copy the array to the device
-    cudaMemcpy(d_array, array, n * sizeof(MyPair), cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_array, array, n * sizeof(MyPair), cudaMemcpyHostToDevice);
     // copy the leftArray and the rightArray to the device
     cudaMemcpy(d_leftArray, leftArray, subArrayOne * sizeof(MyPair), cudaMemcpyHostToDevice);
     cudaMemcpy(d_rightArray, rightArray, subArrayTwo * sizeof(MyPair), cudaMemcpyHostToDevice);
@@ -562,7 +562,7 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
     cudaMemcpy(array, d_array, n * sizeof(MyPair), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     // free the memory
-    cudaFree(d_array);
+    // cudaFree(d_array);
     cudaFree(d_leftArray);
     cudaFree(d_rightArray);
     cudaFree(d_subArrayOne);
@@ -640,15 +640,21 @@ void runMapReduce(const input_type *input, output_type *output)
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         MyPair *host_pairs = (MyPair *)malloc(pair_size);
         cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
-        mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT);
+        mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
         // copy from the host to the device
-        cudaMemcpy(dev_pairs, host_pairs, pair_size, cudaMemcpyHostToDevice);
-        // Print host_pairs
+        // cudaMemcpy(dev_pairs, host_pairs, pair_size, cudaMemcpyHostToDevice);
+        // free(host_pairs);
+        // // allocate memory for the sorted pairs
+        // host_pairs = (MyPair *)malloc(pair_size);
+        // cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
+
+        // // Print host_pairs
         // for (size_t i = 0; i < NUM_INPUT; i++)
         // {
         //     std::cout << host_pairs[i] << std::endl;
         // }
         free(host_pairs);
+
         // Run reducer kernel on key-value pairs
         runReducer(dev_pairs, dev_output, TOTAL_PAIRS_D);
 
