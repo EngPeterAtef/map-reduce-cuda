@@ -1,6 +1,6 @@
 CXX := g++
 
-TARGETS := mapreduce
+TARGETS := kmeans wordcount
 SOURCES := map_reduce.cpp
 HEADERS_KMEANS := random_generator.hpp kmeans.hpp
 HEADERS_WORDCOUNT := wordcount.hpp
