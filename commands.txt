@@ -14,6 +14,10 @@ nvcc -O3 -dc .\new_int_merge_sort.cu
 nvcc -O3 -o new_int_merge_sort new_int_merge_sort.obj
 new_int_merge_sort
 ====================================
+nvcc -O3 -dc .\new_merge_sort.cu
+nvcc -O3 -o new_merge_sort new_merge_sort.obj
+new_merge_sort
+====================================
 nvcc -O3 -dc .\cpu_merge_sort.cu
 nvcc -O3 -o cpu_merge_sort cpu_merge_sort.obj
 cpu_merge_sort
