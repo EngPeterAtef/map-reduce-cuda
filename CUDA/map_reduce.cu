@@ -5,185 +5,43 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include "config.cuh"
-#include "random_generator.hpp"
+#include "kmeans.cuh"
 #include <cuda_runtime.h>
 
 #define MAX_DEPTH 32
 
-const bool SAVE_TO_FILE = true;
+using millis = std::chrono::milliseconds;
+using std::chrono::duration_cast;
+using std::chrono::steady_clock;
 
-__device__ __host__
-    uint64_cu
-    distance(const Vector2D &p1, const Vector2D &p2)
-{
-    uint64_cu dist = 0;
-    for (int i = 0; i < DIMENSION; i++)
-    {
-        int temp = p1.values[i] - p2.values[i];
-        dist += temp * temp;
-    }
+void runMapReduce(const input_type *input, output_type *output);
+void readData(std::vector<input_type> &data, std::string filename);
+void saveData(const output_type *output, std::string filename);
+void printDeviceProperties();
+void printMapReduceGPUParams(int mapBlockSize, int mapGridSize, int reduceBlockSize, int reduceGridSize);
 
-    return dist;
-}
-
-/*
-    Mapper function for each input element
-    Input is already stored in memory, and output pairs must be stored in the memory allocated
-    Muliple pairs can be generated for a single input, but their number shouldn't exceed NUM_PAIRS
-*/
-__device__ void mapper(const input_type *input, MyPair *pairs, output_type *output)
-{
-    // Find centroid with min distance from the current point
-    uint64_cu min_distance = ULLONG_MAX;
-    int cluster_id = -1;
-
-    for (int i = 0; i < NUM_OUTPUT; i++)
-    {
-        uint64_cu dist = distance(*input, output[i]);
-        if (dist < min_distance)
-        {
-            min_distance = dist;
-            cluster_id = i;
-        }
-    }
-
-    pairs->key = cluster_id;
-    pairs->value = *input;
-    // printf("Key: %d, Point: %d %d\n", pairs->key, pairs->value.values[0], pairs->value.values[1]);
-}
-
-/*
-    Reducer to convert Key-Value pairs to desired output
-    `len` number of pairs can be read starting from pairs, and output is stored in memory
-*/
-__device__ void reducer(MyPair *pairs, size_t len, output_type *output)
-{
-    // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
-
-    // Find new centroid
-    uint64_cu new_values[DIMENSION]; // uint64_cu to avoid overflow
-    for (int i = 0; i < DIMENSION; i++)
-        new_values[i] = 0;
-
-    for (size_t i = 0; i < len; i++)
-    {
-        for (int j = 0; j < DIMENSION; j++)
-            new_values[j] += pairs[i].value.values[j]; // Wow, this is bad naming
-    }
-
-    // uint64_cu diff = 0;
-
-    // Take the key of any pair
-    int cluster_idx = pairs[0].key;
-    for (int i = 0; i < DIMENSION; i++)
-    {
-        new_values[i] /= len;
-
-        // diff += abs((int)new_values[i] - output[cluster_idx].values[i]);
-        output[cluster_idx].values[i] = new_values[i];
-    }
-
-    // printf("Key: %d, Diff: %llu\n", cluster_idx, diff);
-}
-
-/*
-    Initialize according to normal KMeans
-    Choose K random data points as initial centroids
-*/
-void initialize(input_type *input, output_type *output)
-{
-    // Uniform Number generator for random datapoints
-    UniformDistribution distribution(NUM_INPUT);
-
-    // Now chose initial centroids
-    for (int i = 0; i < NUM_OUTPUT; i++)
-    {
-        int sample = distribution.sample();
-        output[i] = input[sample];
-    }
-}
-
-/*
-    Main function that runs a map reduce job.
-*/
 int main(int argc, char *argv[])
 {
-    std::cout << "========================================" << "\n";
-    std::cout << "============Device Properties===========" << "\n";
-    std::cout << "========================================" << "\n";
-    // Get device properties
-    int deviceId = 0; // Device ID (usually 0 for the first GPU)
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, deviceId);
-
-    // Print device properties
-    printf("Device Name: %s\n", prop.name);
-    printf("Total Global Memory: %lu bytes\n", prop.totalGlobalMem);
-    printf("Shared Memory Per Block: %lu bytes\n", prop.sharedMemPerBlock);
-    printf("Warp Size: %d\n", prop.warpSize);
-    printf("Max Threads Per Block: %d\n", prop.maxThreadsPerBlock);
-    printf("Max Threads Dim: (%d, %d, %d)\n", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
-    printf("Max Grid Size: (%d, %d, %d)\n", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
-    printf("Multiprocessor Count: %d\n", prop.multiProcessorCount);
-    printf("Clock Rate: %d kHz\n", prop.clockRate);
-    printf("Compute Capability: %d.%d\n", prop.major, prop.minor);
-    using millis = std::chrono::milliseconds;
-    using std::string;
-    using std::chrono::duration_cast;
-    using std::chrono::steady_clock;
-
+    printDeviceProperties();
     if (argc != 2)
     {
         printf("Requires 1 argument, name of input textfile\n");
         exit(1);
     }
 
-    string filename = argv[1];
+    std::string filename = argv[1];
 
     auto t_seq_1 = steady_clock::now();
 
-    // Read data from text file
-    std::ifstream file(filename);
-    std::vector<std::vector<int>> data; // Vector of vectors to store the data
-
-    if (!file.is_open())
-    {
-        std::cout << "Could not open file" << std::endl;
-        return 1;
-    }
-
-    int num1, num2;
-
-    // Read each line in the file
-    while (file >> num1 >> num2)
-    {
-        // Create a vector to store the two numbers in the row
-        std::vector<int> row = {num1, num2};
-
-        // Add the row to the data vector
-        data.push_back(row);
-    }
-
-    // Close the file
-    file.close();
-
+    std::vector<input_type> data;
+    readData(data, filename);
     int inputNum = (int)data.size();
     NUM_INPUT = inputNum;
     TOTAL_PAIRS = NUM_INPUT * NUM_PAIRS;
 
     MAP_GRID_SIZE = (NUM_INPUT + MAP_BLOCK_SIZE - 1) / MAP_BLOCK_SIZE;
     REDUCE_GRID_SIZE = (NUM_OUTPUT + REDUCE_BLOCK_SIZE - 1) / REDUCE_BLOCK_SIZE;
-    std::cout << "========================================" << "\n";
-    std::cout << "===========Map GPU Parameters===========" << "\n";
-    std::cout << "========================================" << "\n";
-    std::cout << "Block Size: " << MAP_BLOCK_SIZE << std::endl;
-    std::cout << "Grid Size: " << MAP_GRID_SIZE << std::endl;
-    std::cout << "========================================" << "\n";
-    std::cout << "===========Reduce GPU Parameters========" << "\n";
-    std::cout << "========================================" << "\n";
-    std::cout << "Block Size: " << REDUCE_BLOCK_SIZE << std::endl;
-    std::cout << "Grid Size: " << REDUCE_GRID_SIZE << std::endl;
+    printMapReduceGPUParams(MAP_BLOCK_SIZE, MAP_GRID_SIZE, REDUCE_BLOCK_SIZE, REDUCE_GRID_SIZE);
     std::cout << "========================================" << "\n";
     std::cout << "Number of input elements: " << NUM_INPUT << std::endl;
     std::cout << "Number of pairs per input element: " << NUM_PAIRS << std::endl;
@@ -199,15 +57,11 @@ int main(int argc, char *argv[])
     // copy from vector to array
     for (int i = 0; i < inputNum; i++)
     {
-        input[i].values[0] = data[i][0];
-        input[i].values[1] = data[i][1];
+        for (int j = 0; j < DIMENSION; j++)
+        {
+            input[i].values[j] = data[i].values[j];
+        }
     }
-    // // Print the data vector to verify the contents
-    // std::cout << "Data read from file:" << std::endl;
-    // for (int i = 0; i < inputNum; i++)
-    // {
-    //     std::cout << input[i].values[0] << " " << input[i].values[1] << std::endl;
-    // }
     std::cout << "Running Initialization..." << std::endl;
     // Now chose initial centroids
     initialize(input, output);
@@ -218,37 +72,21 @@ int main(int argc, char *argv[])
     runMapReduce(input, output);
     std::cout << "Number of output elements: " << NUM_OUTPUT << std::endl;
 
-    // Save output if required
-    std::ofstream output_file;
-    if (SAVE_TO_FILE)
-    {
-        string output_filename = filename + ".output";
-        output_file.open(output_filename);
-        if (!output_file.is_open())
-        {
-            std::cout << "Unable to open output file: " << output_filename;
-            exit(1);
-        }
-    }
-
     std::cout << "========================================" << "\n";
     std::cout << "==============Final Output==============" << "\n";
     std::cout << "========================================" << "\n";
     // Iterate through the output array
-    for (size_t i = 0; i < NUM_OUTPUT; i++)
+    for (int i = 0; i < NUM_OUTPUT; i++)
     {
         for (int j = 0; j < DIMENSION; j++)
         {
-            printf("%d ", output[i].values[j]);
-            if (SAVE_TO_FILE)
-                output_file << output[i].values[j] << " ";
+            std::cout << output[i].values[j] << " ";
         }
 
-        printf("\n");
-        if (SAVE_TO_FILE)
-            output_file << "\n";
+        std::cout << std::endl;
     }
 
+    saveData(output, filename);
     // Free host memory
     free(input);
     free(output);
@@ -274,16 +112,7 @@ int main(int argc, char *argv[])
 // ===============================================================================
 // ===============================================================================
 
-// functions definitions
-extern __device__ void mapper(const input_type *input, MyPair *pairs, output_type *output);
-extern __device__ void reducer(MyPair *pairs, size_t len, output_type *output);
-
-/*
-    Mapping Kernel: Since each mapper runs independently of each other, we can
-    give each thread its own input to process and a disjoint space where it can`
-    store the key/value pairs it produces.
-*/
-__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, uint64_cu *NUM_INPUT_D)
+__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D)
 {
     size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // // Total number of threads, by jumping this much, it ensures that no thread gets the same data
@@ -304,7 +133,7 @@ __global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *d
 /*
     Call Mapper kernel with the required grid, blocks
 */
-void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, uint64_cu *NUM_INPUT_D)
+void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D)
 {
     mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
     cudaDeviceSynchronize();
@@ -317,12 +146,7 @@ void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_
     }
 }
 
-/*
-    Reducer kernel
-    Input is sorted array of keys (well, pairs)
-    For each thread, find the keys that it'll work on and the range associated with each key
-*/
-__global__ void reducerKernel(MyPair *pairs, output_type *output, uint64_cu *TOTAL_PAIRS_D)
+__global__ void reducerKernel(MyPair *pairs, output_type *output, unsigned long long *TOTAL_PAIRS_D)
 {
     size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // Total number of threads, by jumping this much, it ensures that no thread gets the same data
@@ -379,7 +203,7 @@ __global__ void reducerKernel(MyPair *pairs, output_type *output, uint64_cu *TOT
     }
 }
 
-void runReducer(MyPair *dev_pairs, output_type *dev_output, uint64_cu *TOTAL_PAIRS_D)
+void runReducer(MyPair *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D)
 {
     reducerKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D);
     cudaDeviceSynchronize();
@@ -572,23 +396,12 @@ void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_a
 }
 void runMapReduce(const input_type *input, output_type *output)
 {
-    // 1. Allocate memory on GPU for inputs, key-value pairs & centroids on GPU
-    //      Note output memory is also allocated right now itself
-    // 2. Copy inputs, initial centroids to GPU
-    // 3. For the required iterations, do the following -
-    //      1. Run Mapper kernel, which calls mapper function for the inputs decided for that thread
-    //      2. Sort Key-Value pairs
-    //      3. Reducer: Each thread gets a specific cluster, and finds the new centroids
-    // 4. Copy output from GPU to host memory
-    // 5. Free all GPU memory
-    // Done! Finally
-
-    uint64_cu *NUM_INPUT_D;
-    uint64_cu *TOTAL_PAIRS_D;
-    cudaMalloc(&NUM_INPUT_D, sizeof(uint64_cu));
-    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(uint64_cu), cudaMemcpyHostToDevice);
-    cudaMalloc(&TOTAL_PAIRS_D, sizeof(uint64_cu));
-    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(uint64_cu), cudaMemcpyHostToDevice);
+    unsigned long long *NUM_INPUT_D;
+    unsigned long long *TOTAL_PAIRS_D;
+    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
+    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
+    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
 
     // Pointers for input, key-value pairs & output on device
     input_type *dev_input;
@@ -608,9 +421,6 @@ void runMapReduce(const input_type *input, output_type *output)
     size_t output_size = NUM_OUTPUT * sizeof(output_type);
     cudaMalloc(&dev_output, output_size);
 
-    // Allocate memory on host for older centroids
-    // output_type *old_output = (output_type *) malloc(output_size);
-
     // Copy input datapoints to device
     cudaMemcpy(dev_input, input, input_size, cudaMemcpyHostToDevice);
 
@@ -620,53 +430,124 @@ void runMapReduce(const input_type *input, output_type *output)
     // Now run K Means for the specified iterations
     for (int iter = 0; iter < ITERATIONS; iter++)
     {
-        // printf("Starting iteration %d\n", iter);
-
-        // Copy older centroids
-        // cudaMemcpy(old_output, dev_output, output_size, cudaMemcpyDeviceToHost);
-
-        // Run mapper
-        // This will run mapper kernel on all the inputs, and produces the key-value pairs
-        // It also requires the current centroids, so pass `dev_output` as well
+        // ================== MAP ==================
         runMapper(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
 
-        // Create Thrust device pointer from key-value pairs
-        // thrust::device_ptr<MyPair> dev_pair_thrust_ptr(dev_pairs);
-
-        // thrust::copy(dev_pair_thrust_ptr, dev_pair_thrust_ptr + TOTAL_PAIRS, std::ostream_iterator<MyPair>(std::cout, " "));
-
-        // Sort Key-Value pairs based on Key
-        // This should run on the device itself
+        // ================== SORT ==================
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         MyPair *host_pairs = (MyPair *)malloc(pair_size);
         cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
         mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
-        // copy from the host to the device
-        // cudaMemcpy(dev_pairs, host_pairs, pair_size, cudaMemcpyHostToDevice);
-        // free(host_pairs);
-        // // allocate memory for the sorted pairs
-        // host_pairs = (MyPair *)malloc(pair_size);
-        // cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
 
-        // // Print host_pairs
-        // for (size_t i = 0; i < NUM_INPUT; i++)
-        // {
-        //     std::cout << host_pairs[i] << std::endl;
-        // }
         free(host_pairs);
-
-        // Run reducer kernel on key-value pairs
+        // ================== REDUCE ==================
         runReducer(dev_pairs, dev_output, TOTAL_PAIRS_D);
-
-        // Copy new centroids
-        // cudaMemcpy(output, dev_output, output_size, cudaMemcpyDeviceToHost);
     }
     // Copy outputs from GPU to host
-    // Note host memory has already been allocated
     cudaMemcpy(output, dev_output, output_size, cudaMemcpyDeviceToHost);
 
     // Free all memory allocated on GPU
     cudaFree(dev_input);
     cudaFree(dev_pairs);
     cudaFree(dev_output);
+}
+// ===============================================================
+// ==========================UTILS================================
+// ===============================================================
+void readData(std::vector<input_type> &data, std::string filename)
+{
+    // Read data from text file
+    std::ifstream file(filename);
+
+    if (!file.is_open())
+    {
+        std::cout << "Could not open file" << std::endl;
+        return;
+    }
+
+    std::string line;
+
+    while (std::getline(file, line))
+    {
+        if (!line.empty())
+        {
+            std::istringstream iss(line);
+            input_type input;
+            for (int i = 0; i < DIMENSION && (iss >> input.values[i]); ++i)
+            {
+                // Read DIMENSION values from the line
+            }
+            data.push_back(input); // Add the row to the data vector
+        }
+    }
+
+    // Close the file
+    file.close();
+    // Print the data
+    // int inputNum = (int)data.size();
+    // for (int i = 0; i < inputNum; i++)
+    // {
+    //     for (int j = 0; j < DIMENSION; j++)
+    //     {
+    //         std::cout << data[i].values[j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
+}
+void saveData(const output_type *output, std::string filename)
+{
+    // Save output if required
+    std::ofstream output_file;
+
+    std::string output_filename = filename + ".output";
+    output_file.open(output_filename);
+    if (!output_file.is_open())
+    {
+        std::cout << "Unable to open output file: " << output_filename;
+        return;
+    }
+    for (int i = 0; i < NUM_OUTPUT; i++)
+    {
+        for (int j = 0; j < DIMENSION; j++)
+        {
+            output_file << output[i].values[j] << " ";
+        }
+        output_file << "\n";
+    }
+    output_file.close();
+}
+void printDeviceProperties()
+{
+    std::cout << "========================================" << "\n";
+    std::cout << "============Device Properties===========" << "\n";
+    std::cout << "========================================" << "\n";
+    // Get device properties
+    int deviceId = 0; // Device ID (usually 0 for the first GPU)
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, deviceId);
+
+    // Print device properties
+    std::cout << "Device Name: " << prop.name << std::endl;
+    std::cout << "Total Global Memory: " << prop.totalGlobalMem << " bytes" << std::endl;
+    std::cout << "Shared Memory Per Block: " << prop.sharedMemPerBlock << " bytes" << std::endl;
+    std::cout << "Warp Size: " << prop.warpSize << std::endl;
+    std::cout << "Max Threads Per Block: " << prop.maxThreadsPerBlock << std::endl;
+    std::cout << "Max Threads Dim: (" << prop.maxThreadsDim[0] << ", " << prop.maxThreadsDim[1] << ", " << prop.maxThreadsDim[2] << ")" << std::endl;
+    std::cout << "Max Grid Size: (" << prop.maxGridSize[0] << ", " << prop.maxGridSize[1] << ", " << prop.maxGridSize[2] << ")" << std::endl;
+    std::cout << "Multiprocessor Count: " << prop.multiProcessorCount << std::endl;
+    std::cout << "Clock Rate: " << prop.clockRate << " kHz" << std::endl;
+    std::cout << "Compute Capability: " << prop.major << "." << prop.minor << std::endl;
+}
+void printMapReduceGPUParams(int mapBlockSize, int mapGridSize, int reduceBlockSize, int reduceGridSize)
+{
+    std::cout << "========================================" << "\n";
+    std::cout << "===========Map GPU Parameters===========" << "\n";
+    std::cout << "========================================" << "\n";
+    std::cout << "Block Size: " << mapBlockSize << std::endl;
+    std::cout << "Grid Size: " << mapGridSize << std::endl;
+    std::cout << "========================================" << "\n";
+    std::cout << "===========Reduce GPU Parameters========" << "\n";
+    std::cout << "========================================" << "\n";
+    std::cout << "Block Size: " << reduceBlockSize << std::endl;
+    std::cout << "Grid Size: " << reduceGridSize << std::endl;
 }
