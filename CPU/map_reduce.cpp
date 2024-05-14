@@ -153,17 +153,17 @@ int main(int argc, char *argv[])
         // ==================== Map ========================
         // =================================================
 
-        pthread_t mappers[num_mappers];
+        pthread_t mappers[map_num_threads];
         std::vector<MyPair> map_pairs(inputNum);
-        std::vector<MapParams *> map_params_list(num_mappers); // Store pointers to dynamically allocated MapParams instances
+        std::vector<MapParams *> map_params_list(map_num_threads); // Store pointers to dynamically allocated MapParams instances
 
         // std::cout << "==========================================" << std::endl;
         // Create mappers
-        for (int i = 0; i < num_mappers; i++)
+        for (int i = 0; i < map_num_threads; i++)
         {
-            int start = i * (inputNum / num_mappers);
-            int end = (i + 1) * (inputNum / num_mappers);
-            if (i == num_mappers - 1)
+            int start = i * (inputNum / map_num_threads);
+            int end = (i + 1) * (inputNum / map_num_threads);
+            if (i == map_num_threads - 1)
             {
                 end = inputNum;
             }
@@ -181,7 +181,7 @@ int main(int argc, char *argv[])
             pthread_create(&mappers[i], NULL, map, (void *)mapParams);
         }
         // Wait for all mappers to finish
-        for (int i = 0; i < num_mappers; i++)
+        for (int i = 0; i < map_num_threads; i++)
         {
             pthread_join(mappers[i], NULL);
             delete map_params_list[i];
@@ -243,19 +243,19 @@ int main(int argc, char *argv[])
         // =================== Reduce ======================
         // =================================================
         // std::cout << "==========================================" << std::endl;
-        if (num_reducers > (int)shuffle_output->size())
+        if (reduce_num_threads > (int)shuffle_output->size())
         {
-            num_reducers = (int)shuffle_output->size();
+            reduce_num_threads = (int)shuffle_output->size();
         }
-        pthread_t reducers[num_reducers];
-        std::vector<ReduceParams *> reduce_params_list(num_reducers); // Store pointers to dynamically allocated MapParams instances
+        pthread_t reducers[reduce_num_threads];
+        std::vector<ReduceParams *> reduce_params_list(reduce_num_threads); // Store pointers to dynamically allocated MapParams instances
 
         // Create reducers
-        for (int i = 0; i < num_reducers; i++)
+        for (int i = 0; i < reduce_num_threads; i++)
         {
-            int start = i * (shuffle_output->size() / num_reducers);
-            int end = (i + 1) * (shuffle_output->size() / num_reducers);
-            if (i == num_reducers - 1)
+            int start = i * (shuffle_output->size() / reduce_num_threads);
+            int end = (i + 1) * (shuffle_output->size() / reduce_num_threads);
+            if (i == reduce_num_threads - 1)
             {
                 end = shuffle_output->size();
             }
@@ -271,7 +271,7 @@ int main(int argc, char *argv[])
             pthread_create(&reducers[i], NULL, reduce, (void *)reduceParams);
         }
         // Wait for all reducers to finish
-        for (int i = 0; i < num_reducers; i++)
+        for (int i = 0; i < reduce_num_threads; i++)
         {
             pthread_join(reducers[i], NULL);
             delete reduce_params_list[i];
@@ -304,7 +304,7 @@ int main(int argc, char *argv[])
     output_file.close();
 
     std::cout << "==========================================" << std::endl;
-    std::cout << "Map threads: " << num_mappers << ", Reduce threads: " << num_reducers << std::endl;
+    std::cout << "Map threads: " << map_num_threads << ", Reduce threads: " << reduce_num_threads << std::endl;
     std::cout << "==========================================" << std::endl;
     std::cout << "Time taken to read data: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_after_read - t_before_read).count() << " ms" << std::endl;
     std::cout << "Time taken for map-reduce: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_final - t_after_read).count() << " ms" << std::endl;

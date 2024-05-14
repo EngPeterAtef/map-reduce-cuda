@@ -7,8 +7,8 @@
 
 #include "random_generator.hpp"
 
-int num_mappers = 2;
-int num_reducers = 1;
+int map_num_threads = 2;
+int reduce_num_threads = 1;
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
 
@@ -49,6 +49,15 @@ struct MyPair
 {
     Mykey key;
     MyValue value;
+    // Printing for debugging
+    friend std::ostream &operator<<(std::ostream &os, const MyPair &pair)
+    {
+        os << "Key: " << pair.key << ", Point: ";
+        for (int i = 0; i < DIMENSION; i++)
+            os << pair.value.values[i] << " ";
+        os << "\n";
+        return os;
+    }
 };
 struct ShuffleAndSort_KeyPairOutput
 {

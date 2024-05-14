@@ -5,8 +5,8 @@
 #include <climits>
 #include <vector>
 
-int num_mappers = 6;
-int num_reducers = 6;
+int map_num_threads = 6;
+int reduce_num_threads = 6;
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
 // No. of pairs per input element
