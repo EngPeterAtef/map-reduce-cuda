@@ -14,13 +14,14 @@ unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
 // Total No. of output values (K - No. of clusters)
-const int NUM_OUTPUT = 3;
+int NUM_OUTPUT = 5;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
-const int ITERATIONS = 10;
+const int ITERATIONS = 2;
 const int MAX_WORD_SIZE = 10;
+const int MAX_INPUT_SIZE = 6000;
 
 struct Vector2D
 {
@@ -30,6 +31,7 @@ struct Vector2D
     // Override << operator to print based on the variable DIMENSION
     friend std::ostream &operator<<(std::ostream &os, const Vector2D &vector)
     {
+        os << "(";
         for (int i = 0; i < DIMENSION; i++)
         {
             for (int j = 0; j < MAX_WORD_SIZE; j++)
@@ -40,8 +42,13 @@ struct Vector2D
                 else
                     break;
             }
-            os << " ";
+            if (i != DIMENSION - 1)
+            {
+                os << ", ";
+            }
         }
+        os << ")";
+
         return os;
     }
 };
@@ -133,11 +140,27 @@ struct PairCompare2
     }
 };
 
+struct ShuffleAndSort_KeyPairOutput
+{
+    Mykey key[MAX_WORD_SIZE];
+    MyValue values[MAX_INPUT_SIZE];
+    int size = 0;
+    // ovveride << operator to print
+    friend std::ostream &operator<<(std::ostream &os, const ShuffleAndSort_KeyPairOutput &pair)
+    {
+        os << pair.key << ": [";
+        for (int i = 0; i < pair.size; i++)
+        {
+            os << pair.values[i] << " ";
+        }
+        os << "]";
+        return os;
+    }
+};
 unsigned long long TOTAL_PAIRS;
 __device__ __host__ int charPtrToInt(const char *str, int len)
 {
     int val = 0;
-    // printf("inside func");
     for (int i = 0; i < len; i++)
     {
         // printf("Char: %c\n", str[i]);
@@ -155,8 +178,6 @@ __device__ void intToCharPtr(int val, int &len, char *str)
         digits++;
     }
     len = digits;
-    // char *str = (char *)malloc((digits + 1) * sizeof(char));
-    // char str[MAX_WORD_SIZE];
     int index = digits - 1;
     if (val == 0)
     {
@@ -171,9 +192,7 @@ __device__ void intToCharPtr(int val, int &len, char *str)
         val /= 10;
         index--;
     }
-
     str[digits] = '\0';
-    // return str;
 }
 __device__ __host__ unsigned long long
 distance(const Vector2D &p1, const Vector2D &p2)
@@ -196,18 +215,14 @@ distance(const Vector2D &p1, const Vector2D &p2)
     return dist;
 }
 
-// functions definitions
-extern __device__ void mapper(const input_type *input, MyPair *pairs, output_type *output);
-extern __device__ void reducer(MyPair *pairs, size_t len, output_type *output);
-
-__device__ void mapper(const input_type *input, MyPair *pairs, output_type *output)
+__device__ void mapper(const input_type *input, MyPair *pairs, output_type *output, int *NUM_OUTPUT_D)
 {
 
     // Find centroid with min distance from the current point
     unsigned long long min_distance = ULLONG_MAX;
     int cluster_id = -1;
 
-    for (int i = 0; i < NUM_OUTPUT; i++)
+    for (int i = 0; i < *NUM_OUTPUT_D; i++)
     {
         // printf("Output: %d\n", output[i].len[0]);
         // printf("Input: %d\n", input->len[0]);
@@ -222,7 +237,15 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     intToCharPtr(cluster_id, lenClusterId, (pairs->key));
 
     // pairs->key = clusterIdStr;
-    pairs->value = *input;
+    // pairs->value = *input;
+    for (int i = 0; i < DIMENSION; i++)
+    {
+        for (int j = 0; j < MAX_WORD_SIZE; j++)
+        {
+            pairs->value.values[i * MAX_WORD_SIZE + j] = input->values[i * MAX_WORD_SIZE + j];
+        }
+        pairs->value.len[i] = input->len[i];
+    }
     // printf("Key: %s\n", pairs->key);
 }
 
@@ -230,46 +253,42 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     Reducer to convert Key-Value pairs to desired output
     `len` number of pairs can be read starting from pairs, and output is stored in memory
 */
-__device__ void reducer(MyPair *pairs, size_t len, output_type *output)
+__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
 {
-    // // // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
-
     // Find new centroid
     int new_values[DIMENSION];
     for (int i = 0; i < DIMENSION; i++)
         new_values[i] = 0;
-
-    for (size_t i = 0; i < len; i++)
+    int values_len = pairs->size;
+    for (int i = 0; i < values_len; i++)
     {
         for (int j = 0; j < DIMENSION; j++)
         {
-            int p_size = pairs[i].value.len[j];
-            int p_val = charPtrToInt(&pairs[i].value.values[j * MAX_WORD_SIZE], p_size);
+            int p_size = pairs->values[i].len[j];
+            int p_val = charPtrToInt(&pairs->values[i].values[j * MAX_WORD_SIZE], p_size);
             new_values[j] += p_val;
         }
     }
 
-    // Take the key of any pair
-    char *key = pairs[0].key;
-    // find key size
-    int key_size = 0;
-    while (key[key_size] != '\0')
-    {
-        key_size++;
-    }
+    // // Take the key of any pair
+    // char *key = pairs[0].key;
+    // // find key size
+    // int key_size = 0;
+    // while (key[key_size] != '\0')
+    // {
+    //     key_size++;
+    // }
 
-    // int cluster_idx = pairs[0].key;
-    int cluster_idx = charPtrToInt(key, key_size);
+    // // int cluster_idx = pairs[0].key;
+    // int cluster_idx = charPtrToInt(key, key_size);
+    // printf("Cluster Idx: %d\n", cluster_idx);
 
     for (int i = 0; i < DIMENSION; i++)
     {
-        new_values[i] /= len;
-        intToCharPtr(new_values[i], output[cluster_idx].len[i], &output[cluster_idx].values[i * MAX_WORD_SIZE]);
-
-        // output[cluster_idx].values[i] = new_values[i];
+        new_values[i] /= values_len;
+        intToCharPtr(new_values[i], output->len[i], &output->values[i * MAX_WORD_SIZE]);
+        // printf("Output: %s\n", output[cluster_idx].values[i * MAX_WORD_SIZE]);
     }
-
-    // printf("Key: %d, Diff: %llu\n", cluster_idx, diff);
 }
 
 /*

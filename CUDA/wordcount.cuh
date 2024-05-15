@@ -222,7 +222,7 @@ __device__ void intToCharPtr(int val, int &len, char *str)
     // return str;
 }
 
-__device__ void mapper(const input_type *input, MyPair *pairs, output_type *output)
+__device__ void mapper(const input_type *input, MyPair *pairs, output_type *output, int *NUM_OUTPUT_D)
 {
     // copy input key to pair key
     for (int i = 0; i < DIMENSION; i++)
@@ -238,7 +238,7 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     pairs->value.len[0] = 1;
 }
 
-__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, int outputIdx)
+__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
 {
 
     int values_size = pairs->size;
