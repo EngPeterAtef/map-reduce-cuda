@@ -13,7 +13,9 @@ using millis = std::chrono::milliseconds;
 using std::chrono::duration_cast;
 using std::chrono::steady_clock;
 
-void runMapReduce(const input_type *input, output_type *output);
+void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_array);
+void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&dev_shuffle_output, int &output_size);
+void runPipeline(input_type *input, output_type *&output);
 void readData(input_type *&input, std::string filename, int &inputNum);
 void saveData(const output_type *output, std::string filename);
 void printDeviceProperties();
@@ -58,7 +60,7 @@ int main(int argc, char *argv[])
     auto t_seq_2 = steady_clock::now();
     std::cout << "Running Map-Reduce for " << ITERATIONS << " iterations..." << std::endl;
     // Run the Map Reduce Job
-    runMapReduce(input, output);
+    runPipeline(input, output);
     std::cout << "Number of output elements: " << NUM_OUTPUT << std::endl;
 
     std::cout << "========================================" << "\n";
@@ -67,7 +69,8 @@ int main(int argc, char *argv[])
     // Iterate through the output array
     for (int i = 0; i < NUM_OUTPUT; i++)
     {
-        std::cout << output[i] << std::endl;
+        std::cout << output[i];
+        std::cout << std::endl;
     }
 
     saveData(output, filename);
@@ -96,7 +99,7 @@ int main(int argc, char *argv[])
 // ===============================================================================
 // ===============================================================================
 
-__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D)
+__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D, int *NUM_OUTPUT_D)
 {
     size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // // Total number of threads, by jumping this much, it ensures that no thread gets the same data
@@ -110,13 +113,13 @@ __global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *d
     if (threadId < *NUM_INPUT_D)
     {
         // Input data to run mapper on, and the starting index of memory assigned for key-value pairs for this
-        mapper(&input[threadId], &pairs[threadId * NUM_PAIRS], dev_output);
+        mapper(&input[threadId], &pairs[threadId * NUM_PAIRS], dev_output, NUM_OUTPUT_D);
     }
 }
 
-void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D)
+void runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D, int *NUM_OUTPUT_D)
 {
-    mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
+    mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
     // error checking
     cudaError_t error = cudaGetLastError();
@@ -127,68 +130,137 @@ void runMapper(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_
     }
 }
 
-__global__ void reducerKernel(MyPair *pairs, output_type *output, unsigned long long *TOTAL_PAIRS_D)
+__global__ void reduceKernel(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
 {
-    size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // Total number of threads, by jumping this much, it ensures that no thread gets the same data
     // size_t jump = blockDim.x * gridDim.x;
 
     // for (size_t i = threadId; i < NUM_OUTPUT; i += jump)
-    if (threadId < NUM_OUTPUT)
+    // printf("Thread id: %d\n", threadId);
+    if (threadId < *NUM_OUTPUT_D)
     {
-        // So now i is like the threadId that we need to run on
-        // For each threadId, find the key associated with it (starting index, and the number of pairs)
-        // And handle the case when there's no such key (no. of keys < no. of threads)
-        size_t start_index = 0;            // Starting index of the key in the array of pairs
-        size_t end_index = *TOTAL_PAIRS_D; // Ending index of the key in array of pairs
-        size_t uniq_key_index = 0;         // In a list of unique sorted keys, the index of the key
-        size_t value_size = 0;             // No. of pairs for this key
-
-        // TODO: Can this be converted to a single pass over the entire array once?
-        // Before the reducer
-        // Store unique keys and their ranges
-        for (size_t j = 1; j < *TOTAL_PAIRS_D; j++)
-        {
-            if (PairCompare()(pairs[j - 1], pairs[j]))
-            {
-                // The keys are unequal, therefore we have moved on to a new key
-                if (uniq_key_index == threadId)
-                {
-                    // The previous key was the one associated with this thread
-                    // And we have reached the end of pairs for that key
-                    // So we now know the start and end for the key, no need to go through more pairs
-                    end_index = j;
-                    break;
-                }
-                else
-                {
-                    // Still haven't reached the key required
-                    // Increae the uniq_key_index since it's a new key, and store its starting index
-                    uniq_key_index++;
-                    start_index = j;
-                }
-            }
-        }
-
-        // We can have that the thread doesn't need to process any key
-        if (uniq_key_index != threadId)
-        {
-            return; // Enjoy, nothing to be done!
-        }
-
-        // Total number of pairs to be processed is end-start
-        value_size = end_index - start_index;
-
         // Run the reducer
-        reducer(&pairs[start_index], value_size, &output[threadId]);
+        reducer(&pairs[threadId], &output[threadId]);
+        // printf("Key: %s, Value: %s\n", output[threadId].key, output[threadId].value);
     }
 }
 
-void runReducer(MyPair *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D)
+void runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
 {
-    reducerKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D);
+    reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
 }
+
+void runPipeline(input_type *input, output_type *&output)
+{
+    unsigned long long *NUM_INPUT_D;
+    unsigned long long *TOTAL_PAIRS_D;
+    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
+    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
+    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    int *NUM_OUTPUT_D;
+    cudaMalloc(&NUM_OUTPUT_D, sizeof(int));
+    cudaMemcpy(NUM_OUTPUT_D, &NUM_OUTPUT, sizeof(int), cudaMemcpyHostToDevice);
+
+    // Pointers for input, key-value pairs & output on device
+    input_type *dev_input;
+    output_type *dev_output;
+    MyPair *dev_pairs;
+
+    // Allocate memory on GPU for input
+    size_t input_size = NUM_INPUT * sizeof(input_type);
+    cudaMalloc(&dev_input, input_size);
+
+    // Allocate memory for key-value pairs
+    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
+    cudaMalloc(&dev_pairs, pair_size);
+
+    // Allocate memory for outputs
+    // Since centroids are needed in K Means the entire time
+    size_t output_size = NUM_OUTPUT * sizeof(output_type);
+    cudaMalloc(&dev_output, output_size);
+
+    cudaMemcpy(dev_input, input, input_size, cudaMemcpyHostToDevice);
+
+    // copy dev_input to host again to print
+    // std::cout << "Printing input from dev" << std::endl;
+    // input_type *host_input;
+    // host_input = (input_type *)malloc(input_size);
+    // cudaMemcpy(host_input, dev_input, input_size, cudaMemcpyDeviceToHost);
+    // for (int i = 0; i < NUM_INPUT; i++)
+    // {
+    //     std::cout << host_input[i];
+    //     std::cout << std::endl;
+    // }
+
+    // Copy initial centroids to device
+    cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
+
+    // Now run K Means for the specified iterations
+    for (int iter = 0; iter < ITERATIONS; iter++)
+    {
+        MyPair *host_pairs;
+        // ================== MAP ==================
+        // TODO: USE STREAMING
+        runMapKernel(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
+
+        // ================== SORT ==================
+        // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
+        host_pairs = (MyPair *)malloc(pair_size);
+        cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
+        mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
+        // for (int i = 0; i < TOTAL_PAIRS; i++)
+        // {
+        //     std::cout << host_pairs[i];
+        // }
+        // std::cout << std::endl;
+        // ============= Combine unique keys =============
+        ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
+        int output_size;
+        combineUniqueKeys(host_pairs, dev_shuffle_output, output_size);
+        // // print shuffle output
+        // for (int i = 0; i < shuffle_output->size(); i++)
+        // {
+        //     std::cout << shuffle_output->at(i);
+        //     std::cout << std::endl;
+        // }
+
+        // allocate output if it was not allocated
+        // check if output is allocated
+        if (NUM_OUTPUT == 0)
+        {
+            NUM_OUTPUT = output_size;
+            output = (output_type *)malloc(output_size * sizeof(output_type));
+            // allocate dev_output
+            cudaMalloc(&dev_output, NUM_OUTPUT * sizeof(output_type));
+            // copy num output to device
+            cudaMemcpy(NUM_OUTPUT_D, &NUM_OUTPUT, sizeof(int), cudaMemcpyHostToDevice);
+            REDUCE_GRID_SIZE = (NUM_OUTPUT + REDUCE_BLOCK_SIZE - 1) / REDUCE_BLOCK_SIZE;
+        }
+
+        // ================== REDUCE ==================
+        runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
+        // free the memory
+        free(host_pairs);
+        cudaFree(dev_shuffle_output);
+    }
+    // Copy outputs from GPU to host
+    cudaMemcpy(output, dev_output, NUM_OUTPUT * sizeof(output_type), cudaMemcpyDeviceToHost);
+
+    // Free all memory allocated on GPU
+    cudaFree(dev_input);
+    cudaFree(dev_pairs);
+    cudaFree(dev_output);
+    cudaFree(NUM_INPUT_D);
+    cudaFree(TOTAL_PAIRS_D);
+    cudaFree(NUM_OUTPUT_D);
+}
+
+// ===============================================================
+// ========================MERGE SORT=============================
+// ===============================================================
 /*
 this function that merges 2 arrays sequentially
 params:
@@ -303,13 +375,6 @@ __global__ void merge(MyPair array[], MyPair *leftArray, MyPair *rightArray, int
     }
 }
 
-// Function to print an array
-void printArray(MyPair A[], int size)
-{
-    for (int i = 0; i < size; i++)
-        std::cout << A[i] << " ";
-    std::cout << std::endl;
-}
 // begin is for left index and end is right index
 // of the sub-array of arr to be sorted
 void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_array)
@@ -375,80 +440,92 @@ void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_a
     delete[] leftArray;
     delete[] rightArray;
 }
-void runMapReduce(const input_type *input, output_type *output)
+// ===============================================================
+// ====================COMBINE UNIQUE KEYS========================
+// ===============================================================
+void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&dev_shuffle_output, int &output_size)
 {
-    unsigned long long *NUM_INPUT_D;
-    unsigned long long *TOTAL_PAIRS_D;
-    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
-    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
-    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
-    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    std::vector<ShuffleAndSort_KeyPairOutput> *shuffle_output = new std::vector<ShuffleAndSort_KeyPairOutput>();
 
-    // Pointers for input, key-value pairs & output on device
-    input_type *dev_input;
-    output_type *dev_output;
-    MyPair *dev_pairs;
-
-    // Allocate memory on GPU for input
-    size_t input_size = NUM_INPUT * sizeof(input_type);
-    cudaMalloc(&dev_input, input_size);
-
-    // Allocate memory for key-value pairs
-    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
-    cudaMalloc(&dev_pairs, pair_size);
-
-    // Allocate memory for outputs
-    // Since centroids are needed in K Means the entire time
-    size_t output_size = NUM_OUTPUT * sizeof(output_type);
-    cudaMalloc(&dev_output, output_size);
-
-    // Copy input datapoints to device
-    cudaMemcpy(dev_input, input, input_size, cudaMemcpyHostToDevice);
-
-    // Copy initial centroids to device
-    cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
-
-    // Now run K Means for the specified iterations
-    for (int iter = 0; iter < ITERATIONS; iter++)
+    for (int i = 0; i < NUM_INPUT; i++)
     {
-        MyPair *host_pairs;
-        // ================== MAP ==================
-        // TODO: USE STREAMING
-        runMapper(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
-        // copy to host to print
-        host_pairs = (MyPair *)malloc(pair_size);
-        // cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
-        // for (int i = 0; i < TOTAL_PAIRS; i++)
-        // {
-        //     std::cout << host_pairs[i];
-        // }
-        // std::cout << std::endl;
-        // free(host_pairs);
-
-        // ================== SORT ==================
-        // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
-        host_pairs = (MyPair *)malloc(pair_size);
-        cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
-        mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
-
-        free(host_pairs);
-        // ================== REDUCE ==================
-        runReducer(dev_pairs, dev_output, TOTAL_PAIRS_D);
+        bool isSame = strcmp(host_pairs[i].key, host_pairs[i - 1].key) == 0;
+        if (i == 0 || !isSame)
+        {
+            ShuffleAndSort_KeyPairOutput current_pair;
+            for (int k = 0; k < DIMENSION; k++)
+            {
+                for (int j = 0; j < MAX_WORD_SIZE; j++)
+                {
+                    // copy key
+                    current_pair.key[j] = host_pairs[i].key[j];
+                    // copy value
+                    current_pair.values[0].values[k * MAX_WORD_SIZE + j] = host_pairs[i].value.values[k * MAX_WORD_SIZE + j];
+                }
+                current_pair.values[0].len[k] = host_pairs[i].value.len[k];
+            }
+            current_pair.size = 1;
+            shuffle_output->push_back(current_pair);
+        }
+        else
+        {
+            for (int k = 0; k < DIMENSION; k++)
+            {
+                for (int j = 0; j < MAX_WORD_SIZE; j++)
+                {
+                    shuffle_output->back().values[shuffle_output->back().size].values[k * MAX_WORD_SIZE + j] = host_pairs[i].value.values[k * MAX_WORD_SIZE + j];
+                }
+                shuffle_output->back().values[shuffle_output->back().size].len[k] = host_pairs[i].value.len[k];
+            }
+            shuffle_output->back().size++;
+        }
     }
-    // Copy outputs from GPU to host
-    cudaMemcpy(output, dev_output, output_size, cudaMemcpyDeviceToHost);
-
-    // Free all memory allocated on GPU
-    cudaFree(dev_input);
-    cudaFree(dev_pairs);
-    cudaFree(dev_output);
+    output_size = shuffle_output->size();
+    // allocate memory for the output
+    cudaMalloc(&dev_shuffle_output, output_size * sizeof(ShuffleAndSort_KeyPairOutput));
+    cudaMemcpy(dev_shuffle_output, shuffle_output->data(), output_size * sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);
+    // free the memory
+    shuffle_output->clear();
+    delete shuffle_output;
 }
+
 // ===============================================================
 // ==========================UTILS================================
 // ===============================================================
+void stringToCharArray(const std::string &str, char *&charArray, char *&dev_charArray, int &length)
+{
+    // Convert std::string to C-style string
+    const char *cstr = str.c_str();
+
+    // Determine length of C-style string
+    length = 0;
+    while (cstr[length] != '\0')
+    {
+        length++;
+    }
+
+    // Allocate memory for the C-style array to store the characters
+    charArray = (char *)malloc((length + 1) * sizeof(char)); // +1 for the null terminator
+
+    // Check if memory allocation was successful
+    if (charArray == nullptr)
+    {
+        std::cerr << "Memory allocation failed" << std::endl;
+        return;
+    }
+
+    // Copy characters from C-style string to the array
+    for (int i = 0; i <= length; i++)
+    {
+        charArray[i] = cstr[i];
+    }
+    // copy to device
+    // cudaMalloc(&dev_charArray, (length + 1) * sizeof(char));
+    // cudaMemcpy(dev_charArray, charArray, (length + 1) * sizeof(char), cudaMemcpyHostToDevice);
+}
 void readData(input_type *&input, std::string filename, int &inputNum)
 {
-    std::vector<input_type> data;
+    std::vector<ReadVector> data;
 
     // Read data from text file
     std::ifstream file(filename);
@@ -466,7 +543,7 @@ void readData(input_type *&input, std::string filename, int &inputNum)
         if (!line.empty())
         {
             std::istringstream iss(line);
-            input_type tempInput;
+            ReadVector tempInput;
             for (int i = 0; i < DIMENSION && (iss >> tempInput.values[i]); ++i)
             {
                 // Read DIMENSION values from the line
@@ -496,17 +573,24 @@ void readData(input_type *&input, std::string filename, int &inputNum)
     {
         for (int j = 0; j < DIMENSION; j++)
         {
-            input[i].values[j] = data[i].values[j];
+            char *newCharList;
+            char *dev_newCharList;
+            int len;
+            stringToCharArray(data[i].values[j], newCharList, dev_newCharList, len);
+            for (int k = 0; k < len + 1; k++)
+            {
+                input[i].values[j * MAX_WORD_SIZE + k] = newCharList[k];
+            }
+            input[i].len[j] = len;
+            // free the memory
+            free(newCharList);
         }
     }
     data.clear();
     // print the input
     // for (int i = 0; i < inputNum; i++)
     // {
-    //     for (int j = 0; j < DIMENSION; j++)
-    //     {
-    //         std::cout << input[i].values[j] << " ";
-    //     }
+    //     std::cout << input[i];
     //     std::cout << std::endl;
     // }
 }
@@ -562,4 +646,11 @@ void printMapReduceGPUParams(int mapBlockSize, int mapGridSize, int reduceBlockS
     std::cout << "========================================" << "\n";
     std::cout << "Block Size: " << reduceBlockSize << std::endl;
     std::cout << "Grid Size: " << reduceGridSize << std::endl;
+}
+// Function to print an array
+void printArray(MyPair A[], int size)
+{
+    for (int i = 0; i < size; i++)
+        std::cout << A[i] << " ";
+    std::cout << std::endl;
 }
