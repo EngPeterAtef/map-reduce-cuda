@@ -12,14 +12,14 @@ int REDUCE_GRID_SIZE;
 unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
-// Total No. of output values (K - No. of clusters)
-const int NUM_OUTPUT = 3;
+int NUM_OUTPUT = 0;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 1;
 // No. of iterations
 const int ITERATIONS = 1;
 const int MAX_WORD_SIZE = 10;
+const int MAX_INPUT_SIZE = 1000;
 
 struct Vector2D
 {
@@ -59,12 +59,11 @@ struct ReadVector
 };
 
 // Type declarations for input, output & key-value pairs
-using input_type = Vector2D;  // Datapoint (or vector) read from the text file
-using output_type = Vector2D; // Outputs are the cluster centroids
+using input_type = Vector2D; // Datapoint (or vector) read from the text file
 
 // So each point will get associated with a cluster (with id -> key)
-using Mykey = char;  // Cluster that the point corresponds to
-using MyValue = int; // Point associated with the cluster
+using Mykey = char;       // Cluster that the point corresponds to
+using MyValue = Vector2D; // Point associated with the cluster
 
 // Pair type definition
 struct MyPair
@@ -78,6 +77,54 @@ struct MyPair
         os << "Key: " << pair.key << ", Value: ";
         os << pair.value;
         os << "\n";
+        return os;
+    }
+};
+struct MyOutputPair
+{
+    Mykey key[MAX_WORD_SIZE];
+    Mykey value[MAX_WORD_SIZE];
+
+    // Printing for debugging
+    friend std::ostream &operator<<(std::ostream &os, const MyOutputPair &pair)
+    {
+        os << "Key: ";
+        for (int i = 0; i < MAX_WORD_SIZE; i++)
+        {
+            char currentChar = pair.key[i];
+            if (currentChar == '\0')
+                break;
+            os << currentChar;
+        }
+        os << ", ";
+        os << "Value: ";
+        for (int i = 0; i < MAX_WORD_SIZE; i++)
+        {
+            char currentChar = pair.value[i]; // Access value instead of key
+            if (currentChar == '\0')
+                break;
+            os << currentChar;
+        }
+
+        return os;
+    }
+};
+using output_type = MyOutputPair; // Outputs are the cluster centroids
+
+struct ShuffleAndSort_KeyPairOutput
+{
+    Mykey key[MAX_WORD_SIZE];
+    MyValue values[MAX_INPUT_SIZE];
+    int size = 0;
+    // ovveride << operator to print
+    friend std::ostream &operator<<(std::ostream &os, const ShuffleAndSort_KeyPairOutput &pair)
+    {
+        os << pair.key << ": [";
+        for (int i = 0; i < pair.size; i++)
+        {
+            os << pair.values[i] << " ";
+        }
+        os << "]";
         return os;
     }
 };
@@ -186,22 +233,22 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
         }
     }
     // pairs->key = input->values[0];
-    pairs->value = 1;
+    // pairs->value = 1;
+    pairs->value.values[0] = '1';
+    pairs->value.len[0] = 1;
 }
 
-__device__ void reducer(MyPair *pairs, size_t len, output_type *output)
+__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, int outputIdx)
 {
 
-    // int new_value = 0;
-    // int values_size = (int)pairs->values.size();
-    // for (int i = 0; i < values_size; i++)
-    // {
-    //     new_value += pairs->values[i];
-    // }
-    // MyPair output_pair;
-    // output_pair.key = pairs[0].key;
-    // output_pair.value = new_value;
-    // output.push_back(output_pair);
+    int values_size = pairs->size;
+    for (int i = 0; i < MAX_WORD_SIZE; i++)
+    {
+        output->key[i] = pairs->key[i];
+    }
+    int len;
+    intToCharPtr(values_size, len, output->value);
+    // printf("Key: %s, Value: %s, idx %d\n", output->key, output->value, outputIdx);
 }
 
 void initialize(input_type *input, output_type *output)
