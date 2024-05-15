@@ -193,7 +193,16 @@ void mergeSort(MyPair *array, int const begin, int const end, int n)
     delete[] leftArray;
     delete[] rightArray;
 }
-
+// Automated function to check if array is sorted
+bool isSorted(MyPair *arr, int size)
+{
+    for (int i = 1; i < size; ++i)
+    {
+        if (PairCompare()(arr[i], arr[i - 1]))
+            return false;
+    }
+    return true;
+}
 int main(int argc, char *argv[])
 {
 
@@ -271,6 +280,14 @@ int main(int argc, char *argv[])
     cudaDeviceReset();
 
     cout << "\nSorted array is \n";
-    printArray(pairs, inputNum);
+    if (isSorted(pairs, inputNum))
+    {
+        cout << "Sorted\n";
+    }
+    else
+    {
+        cout << "Not Sorted\n";
+    }
+    // printArray(pairs, inputNum);
     return 0;
 }

@@ -9,6 +9,7 @@
 #include <vector>
 #include <fstream>
 using namespace std;
+
 #define MAX_THREADS_PER_BLOCK 1024
 
 // Bitonic Sort for CPU
@@ -191,6 +192,11 @@ bool isSorted(MyPair *arr, int size)
     }
     return true;
 }
+// Function to check if given number is a power of 2
+bool isPowerOfTwo(int num)
+{
+    return num > 0 && (num & (num - 1)) == 0;
+}
 
 // MAIN PROGRAM
 int main(int argc, char *argv[])
@@ -327,28 +333,36 @@ int main(int argc, char *argv[])
     }
     else
     {
-        int j, k;
-
-        // Time the run and call GPU Bitonic Kernel
-        cudaEventRecord(startGPU);
-        for (k = 2; k <= size; k <<= 1)
+        if (isPowerOfTwo(size))
         {
-            for (j = k >> 1; j > 0; j = j >> 1)
+
+            int j, k;
+
+            // Time the run and call GPU Bitonic Kernel
+            cudaEventRecord(startGPU);
+            for (k = 2; k <= size; k <<= 1)
             {
-                bitonicSortGPU<<<blocksPerGrid, threadsPerBlock>>>(gpuArrbiton, j, k);
+                for (j = k >> 1; j > 0; j = j >> 1)
+                {
+                    bitonicSortGPU<<<blocksPerGrid, threadsPerBlock>>>(gpuArrbiton, j, k);
+                }
             }
+            cudaEventRecord(stopGPU);
+
+            // Transfer Sorted array back to CPU
+            cudaMemcpy(arr, gpuArrbiton, size * sizeof(MyPair), cudaMemcpyDeviceToHost);
+            cudaEventSynchronize(stopGPU);
+            cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
+
+            // Time the run and call CPU Bitonic Sort
+            startCPU = clock();
+            bitonicSortCPU(carr, size);
+            endCPU = clock();
         }
-        cudaEventRecord(stopGPU);
-
-        // Transfer Sorted array back to CPU
-        cudaMemcpy(arr, gpuArrbiton, size * sizeof(MyPair), cudaMemcpyDeviceToHost);
-        cudaEventSynchronize(stopGPU);
-        cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
-
-        // Time the run and call CPU Bitonic Sort
-        startCPU = clock();
-        bitonicSortCPU(carr, size);
-        endCPU = clock();
+        else
+        {
+            cout << "Size of array is not a power of 2. Please enter a power of 2 to use Bitonic Sort" << endl;
+        }
     }
 
     // Calculate Elapsed CPU time
