@@ -20,13 +20,36 @@ const int NUM_OUTPUT = 3;
 const int DIMENSION = 2;
 // No. of iterations
 const int ITERATIONS = 10;
+const int MAX_WORD_SIZE = 10;
 
-// Custom types
 struct Vector2D
 {
-    int values[DIMENSION];
-    // ovveride << operator to print based on the variable DIMENSION
+    char values[DIMENSION * MAX_WORD_SIZE]; // Single character array
+    int len[DIMENSION];                     // Length of each word
+
+    // Override << operator to print based on the variable DIMENSION
     friend std::ostream &operator<<(std::ostream &os, const Vector2D &vector)
+    {
+        for (int i = 0; i < DIMENSION; i++)
+        {
+            for (int j = 0; j < MAX_WORD_SIZE; j++)
+            {
+                char currentChar = vector.values[i * MAX_WORD_SIZE + j];
+                if (currentChar != '\0')
+                    os << currentChar;
+                else
+                    break;
+            }
+            os << " ";
+        }
+        return os;
+    }
+};
+struct ReadVector
+{
+    std::string values[DIMENSION];
+    // ovveride << operator to print based on the variable DIMENSION
+    friend std::ostream &operator<<(std::ostream &os, const ReadVector &vector)
     {
         for (int i = 0; i < DIMENSION; i++)
         {
@@ -41,21 +64,20 @@ using input_type = Vector2D;  // Datapoint (or vector) read from the text file
 using output_type = Vector2D; // Outputs are the cluster centroids
 
 // So each point will get associated with a cluster (with id -> key)
-using Mykey = int;        // Cluster that the point corresponds to
+using Mykey = char;       // Cluster that the point corresponds to
 using MyValue = Vector2D; // Point associated with the cluster
 
 // Pair type definition
 struct MyPair
 {
-    Mykey key;
+    Mykey key[MAX_WORD_SIZE];
     MyValue value;
 
     // Printing for debugging
     friend std::ostream &operator<<(std::ostream &os, const MyPair &pair)
     {
         os << "Key: " << pair.key << ", Point: ";
-        for (int i = 0; i < DIMENSION; i++)
-            os << pair.value.values[i] << " ";
+        os << pair.value;
         os << "\n";
         return os;
     }
@@ -67,28 +89,107 @@ struct MyPair
 */
 struct PairCompare
 {
+    __host__ __device__ bool myStrCmpLess(const char *str1, const char *str2)
+    {
+        while (*str1 && *str2 && *str1 == *str2)
+        {
+            ++str1;
+            ++str2;
+        }
+        return *str1 < *str2; // Return true only if the left-hand side is strictly less than the right-hand side
+    }
     __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
     {
-        return lhs.key < rhs.key;
+        // return lhs.key < rhs.key;
+        return myStrCmpLess(lhs.key, rhs.key);
     }
 };
 struct PairCompare2
 {
+    __host__ __device__ bool myStrCmpLessEqual(const char *str1, const char *str2)
+    {
+        while (*str1 && *str2 && *str1 == *str2)
+        {
+            ++str1;
+            ++str2;
+        }
+        // If both strings are equal up to the end of one of them or both have ended,
+        // return true (considered less or equal)
+        if (*str1 == *str2)
+            return true;
+        // If one string has ended but the other hasn't, consider the one with the shorter length as less or equal
+        if (!*str1 && *str2)
+            return true;
+        if (*str1 && !*str2)
+            return false;
+        // Otherwise, return the comparison result
+        return *str1 <= *str2;
+    }
+
     __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
     {
-        return lhs.key <= rhs.key;
+        // return lhs.key <= rhs.key;
+        return myStrCmpLessEqual(lhs.key, rhs.key);
     }
 };
 
 unsigned long long TOTAL_PAIRS;
+__device__ __host__ int charPtrToInt(const char *str, int len)
+{
+    int val = 0;
+    // printf("inside func");
+    for (int i = 0; i < len; i++)
+    {
+        // printf("Char: %c\n", str[i]);
+        val = val * 10 + (str[i] - '0');
+    }
+    return val;
+}
+__device__ void intToCharPtr(int val, int &len, char *str)
+{
+    int temp = val;
+    int digits = 0;
+    while (temp != 0)
+    {
+        temp /= 10;
+        digits++;
+    }
+    len = digits;
+    // char *str = (char *)malloc((digits + 1) * sizeof(char));
+    // char str[MAX_WORD_SIZE];
+    int index = digits - 1;
+    if (val == 0)
+    {
+        str[0] = '0';
+        str[1] = '\0';
 
+        return;
+    }
+    while (val != 0)
+    {
+        str[index] = (val % 10) + '0';
+        val /= 10;
+        index--;
+    }
+
+    str[digits] = '\0';
+    // return str;
+}
 __device__ __host__ unsigned long long
 distance(const Vector2D &p1, const Vector2D &p2)
 {
     unsigned long long dist = 0;
     for (int i = 0; i < DIMENSION; i++)
     {
-        int temp = p1.values[i] - p2.values[i];
+        int p1_size = p1.len[i];
+        int p2_size = p2.len[i];
+        // convert char* to int
+        // printf("P1: %d, P2: %d\n", p1_size, p2_size);
+        int p1_val = charPtrToInt(&p1.values[i * MAX_WORD_SIZE], p1_size);
+        int p2_val = charPtrToInt(&p2.values[i * MAX_WORD_SIZE], p2_size);
+        // printf("P1: %d, P2: %d\n", p1_val, p2_val);
+
+        int temp = p1_val - p2_val;
         dist += temp * temp;
     }
 
@@ -101,12 +202,15 @@ extern __device__ void reducer(MyPair *pairs, size_t len, output_type *output);
 
 __device__ void mapper(const input_type *input, MyPair *pairs, output_type *output)
 {
+
     // Find centroid with min distance from the current point
     unsigned long long min_distance = ULLONG_MAX;
     int cluster_id = -1;
 
     for (int i = 0; i < NUM_OUTPUT; i++)
     {
+        // printf("Output: %d\n", output[i].len[0]);
+        // printf("Input: %d\n", input->len[0]);
         unsigned long long dist = distance(*input, output[i]);
         if (dist < min_distance)
         {
@@ -114,10 +218,12 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
             cluster_id = i;
         }
     }
+    int lenClusterId;
+    intToCharPtr(cluster_id, lenClusterId, (pairs->key));
 
-    pairs->key = cluster_id;
+    // pairs->key = clusterIdStr;
     pairs->value = *input;
-    // printf("Key: %d, Point: %d %d\n", pairs->key, pairs->value.values[0], pairs->value.values[1]);
+    // printf("Key: %s\n", pairs->key);
 }
 
 /*
@@ -126,29 +232,41 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
 */
 __device__ void reducer(MyPair *pairs, size_t len, output_type *output)
 {
-    // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
+    // // // printf("Key: %d, Length: %llu\n", pairs[0].key, len);
 
     // Find new centroid
-    unsigned long long new_values[DIMENSION]; // unsigned long long to avoid overflow
+    int new_values[DIMENSION];
     for (int i = 0; i < DIMENSION; i++)
         new_values[i] = 0;
 
     for (size_t i = 0; i < len; i++)
     {
         for (int j = 0; j < DIMENSION; j++)
-            new_values[j] += pairs[i].value.values[j]; // Wow, this is bad naming
+        {
+            int p_size = pairs[i].value.len[j];
+            int p_val = charPtrToInt(&pairs[i].value.values[j * MAX_WORD_SIZE], p_size);
+            new_values[j] += p_val;
+        }
     }
 
-    // unsigned long long diff = 0;
-
     // Take the key of any pair
-    int cluster_idx = pairs[0].key;
+    char *key = pairs[0].key;
+    // find key size
+    int key_size = 0;
+    while (key[key_size] != '\0')
+    {
+        key_size++;
+    }
+
+    // int cluster_idx = pairs[0].key;
+    int cluster_idx = charPtrToInt(key, key_size);
+
     for (int i = 0; i < DIMENSION; i++)
     {
         new_values[i] /= len;
+        intToCharPtr(new_values[i], output[cluster_idx].len[i], &output[cluster_idx].values[i * MAX_WORD_SIZE]);
 
-        // diff += abs((int)new_values[i] - output[cluster_idx].values[i]);
-        output[cluster_idx].values[i] = new_values[i];
+        // output[cluster_idx].values[i] = new_values[i];
     }
 
     // printf("Key: %d, Diff: %llu\n", cluster_idx, diff);

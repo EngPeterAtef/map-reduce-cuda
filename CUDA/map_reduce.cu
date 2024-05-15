@@ -6,14 +6,14 @@
 #include <sstream>
 #include <string>
 #include <cuda_runtime.h>
-#include "kmeans.cuh"
-// #include "wordcount.cuh"
+// #include "kmeans.cuh"
+#include "wordcount.cuh"
 
 using millis = std::chrono::milliseconds;
 using std::chrono::duration_cast;
 using std::chrono::steady_clock;
 
-void runMapReduce(const input_type *input, output_type *output);
+void runMapReduce(input_type *input, output_type *output);
 void readData(input_type *&input, std::string filename, int &inputNum);
 void saveData(const output_type *output, std::string filename);
 void printDeviceProperties();
@@ -375,7 +375,7 @@ void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_a
     delete[] leftArray;
     delete[] rightArray;
 }
-void runMapReduce(const input_type *input, output_type *output)
+void runMapReduce(input_type *input, output_type *output)
 {
     unsigned long long *NUM_INPUT_D;
     unsigned long long *TOTAL_PAIRS_D;
@@ -402,8 +402,18 @@ void runMapReduce(const input_type *input, output_type *output)
     size_t output_size = NUM_OUTPUT * sizeof(output_type);
     cudaMalloc(&dev_output, output_size);
 
-    // Copy input datapoints to device
     cudaMemcpy(dev_input, input, input_size, cudaMemcpyHostToDevice);
+
+    // copy dev_input to host again to print
+    // std::cout << "Printing input from dev" << std::endl;
+    // input_type *host_input;
+    // host_input = (input_type *)malloc(input_size);
+    // cudaMemcpy(host_input, dev_input, input_size, cudaMemcpyDeviceToHost);
+    // for (int i = 0; i < NUM_INPUT; i++)
+    // {
+    //     std::cout << host_input[i];
+    //     std::cout << std::endl;
+    // }
 
     // Copy initial centroids to device
     cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
@@ -430,6 +440,11 @@ void runMapReduce(const input_type *input, output_type *output)
         host_pairs = (MyPair *)malloc(pair_size);
         cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
         mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
+        // for (int i = 0; i < TOTAL_PAIRS; i++)
+        // {
+        //     std::cout << host_pairs[i];
+        // }
+        // std::cout << std::endl;
 
         free(host_pairs);
         // ================== REDUCE ==================
@@ -446,9 +461,40 @@ void runMapReduce(const input_type *input, output_type *output)
 // ===============================================================
 // ==========================UTILS================================
 // ===============================================================
+void stringToCharArray(const std::string &str, char *&charArray, char *&dev_charArray, int &length)
+{
+    // Convert std::string to C-style string
+    const char *cstr = str.c_str();
+
+    // Determine length of C-style string
+    length = 0;
+    while (cstr[length] != '\0')
+    {
+        length++;
+    }
+
+    // Allocate memory for the C-style array to store the characters
+    charArray = (char *)malloc((length + 1) * sizeof(char)); // +1 for the null terminator
+
+    // Check if memory allocation was successful
+    if (charArray == nullptr)
+    {
+        std::cerr << "Memory allocation failed" << std::endl;
+        return;
+    }
+
+    // Copy characters from C-style string to the array
+    for (int i = 0; i <= length; i++)
+    {
+        charArray[i] = cstr[i];
+    }
+    // copy to device
+    // cudaMalloc(&dev_charArray, (length + 1) * sizeof(char));
+    // cudaMemcpy(dev_charArray, charArray, (length + 1) * sizeof(char), cudaMemcpyHostToDevice);
+}
 void readData(input_type *&input, std::string filename, int &inputNum)
 {
-    std::vector<input_type> data;
+    std::vector<ReadVector> data;
 
     // Read data from text file
     std::ifstream file(filename);
@@ -466,7 +512,7 @@ void readData(input_type *&input, std::string filename, int &inputNum)
         if (!line.empty())
         {
             std::istringstream iss(line);
-            input_type tempInput;
+            ReadVector tempInput;
             for (int i = 0; i < DIMENSION && (iss >> tempInput.values[i]); ++i)
             {
                 // Read DIMENSION values from the line
@@ -496,17 +542,24 @@ void readData(input_type *&input, std::string filename, int &inputNum)
     {
         for (int j = 0; j < DIMENSION; j++)
         {
-            input[i].values[j] = data[i].values[j];
+            char *newCharList;
+            char *dev_newCharList;
+            int len;
+            stringToCharArray(data[i].values[j], newCharList, dev_newCharList, len);
+            for (int k = 0; k < len + 1; k++)
+            {
+                input[i].values[j * MAX_WORD_SIZE + k] = newCharList[k];
+            }
+            input[i].len[j] = len;
+            // free the memory
+            free(newCharList);
         }
     }
     data.clear();
     // print the input
     // for (int i = 0; i < inputNum; i++)
     // {
-    //     for (int j = 0; j < DIMENSION; j++)
-    //     {
-    //         std::cout << input[i].values[j] << " ";
-    //     }
+    //     std::cout << input[i];
     //     std::cout << std::endl;
     // }
 }
