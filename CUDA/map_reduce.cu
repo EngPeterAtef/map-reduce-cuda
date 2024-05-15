@@ -207,7 +207,7 @@ __device__ void mergeSequential(MyPair *array, MyPair *leftArray, MyPair *rightA
     // Merge the temp arrays back into array[left..right]
     while (indexOfSubArrayOne < subArrayOne && indexOfSubArrayTwo < subArrayTwo)
     {
-        if (PairCompare2()(leftArray[indexOfSubArrayOne], rightArray[indexOfSubArrayTwo]))
+        if (PairCompareLessEql()(leftArray[indexOfSubArrayOne], rightArray[indexOfSubArrayTwo]))
         {
             array[indexOfMergedArray] = leftArray[indexOfSubArrayOne];
             indexOfSubArrayOne++;
