@@ -9,8 +9,6 @@
 #include "kmeans.cuh"
 // #include "wordcount.cuh"
 
-#define MAX_DEPTH 32
-
 using millis = std::chrono::milliseconds;
 using std::chrono::duration_cast;
 using std::chrono::steady_clock;
@@ -415,6 +413,7 @@ void runMapReduce(const input_type *input, output_type *output)
     {
         MyPair *host_pairs;
         // ================== MAP ==================
+        // TODO: USE STREAMING
         runMapper(dev_input, dev_pairs, dev_output, NUM_INPUT_D);
         // copy to host to print
         host_pairs = (MyPair *)malloc(pair_size);
