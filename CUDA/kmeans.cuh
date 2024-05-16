@@ -14,14 +14,14 @@ unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
 // Total No. of output values (K - No. of clusters)
-int NUM_OUTPUT = 5;
+int NUM_OUTPUT = 10;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
-const int ITERATIONS = 2;
+const int ITERATIONS = 10;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 6000;
+const int MAX_INPUT_SIZE = 1001;
 
 struct Vector2D
 {
