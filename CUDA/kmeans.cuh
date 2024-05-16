@@ -5,9 +5,10 @@
 
 // GPU parameters
 const int MAP_BLOCK_SIZE = 512;
-const int REDUCE_BLOCK_SIZE = 32;
+int REDUCE_BLOCK_SIZE = 32;
 int MAP_GRID_SIZE;
 int REDUCE_GRID_SIZE;
+const bool USE_REDUCTION = false;
 
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
@@ -21,7 +22,7 @@ const int DIMENSION = 2;
 // No. of iterations
 const int ITERATIONS = 2;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 101;
+const int MAX_INPUT_SIZE = 10001;
 
 struct Vector2D
 {
@@ -52,6 +53,22 @@ struct Vector2D
         return os;
     }
 };
+struct PairVector
+{
+    int values[DIMENSION]; // Single character array
+
+    // Override << operator to print based on the variable DIMENSION
+    friend std::ostream &operator<<(std::ostream &os, const PairVector &vector)
+    {
+        os << "(";
+        for (int i = 0; i < DIMENSION; i++)
+        {
+            os << vector.values[i] << ", ";
+        }
+        os << ")";
+        return os;
+    }
+};
 struct ReadVector
 {
     std::string values[DIMENSION];
@@ -67,12 +84,13 @@ struct ReadVector
 };
 
 // Type declarations for input, output & key-value pairs
-using input_type = Vector2D;  // Datapoint (or vector) read from the text file
-using output_type = Vector2D; // Outputs are the cluster centroids
+using input_type = Vector2D;    // Datapoint (or vector) read from the text file
+using output_type = PairVector; // Outputs are the cluster centroids
 
 // So each point will get associated with a cluster (with id -> key)
-using Mykey = char;       // Cluster that the point corresponds to
-using MyValue = Vector2D; // Point associated with the cluster
+using Mykey = char;         // Cluster that the point corresponds to
+using MyValue = PairVector; // Point associated with the cluster
+using MyOutputValue = int;  // Point associated with the cluster
 
 // Pair type definition
 struct MyPair
@@ -223,17 +241,16 @@ __device__ void intToCharPtr(int val, int &len, char *str)
     str[digits] = '\0';
 }
 __device__ __host__ unsigned long long
-distance(const Vector2D &p1, const Vector2D &p2)
+distance(const Vector2D &p1, const PairVector &p2)
 {
     unsigned long long dist = 0;
     for (int i = 0; i < DIMENSION; i++)
     {
         int p1_size = p1.len[i];
-        int p2_size = p2.len[i];
         // convert char* to int
         // printf("P1: %d, P2: %d\n", p1_size, p2_size);
         int p1_val = charPtrToInt(&p1.values[i * MAX_WORD_SIZE], p1_size);
-        int p2_val = charPtrToInt(&p2.values[i * MAX_WORD_SIZE], p2_size);
+        int p2_val = p2.values[i];
         // printf("P1: %d, P2: %d\n", p1_val, p2_val);
 
         int temp = p1_val - p2_val;
@@ -261,6 +278,10 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
             cluster_id = i;
         }
     }
+    if (cluster_id == -1)
+    {
+        printf("Cluster id not found\n");
+    }
     int lenClusterId;
     intToCharPtr(cluster_id, lenClusterId, (pairs->key));
 
@@ -268,11 +289,8 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     // pairs->value = *input;
     for (int i = 0; i < DIMENSION; i++)
     {
-        for (int j = 0; j < MAX_WORD_SIZE; j++)
-        {
-            pairs->value.values[i * MAX_WORD_SIZE + j] = input->values[i * MAX_WORD_SIZE + j];
-        }
-        pairs->value.len[i] = input->len[i];
+
+        pairs->value.values[i] = charPtrToInt(&input->values[i * MAX_WORD_SIZE], input->len[i]);
     }
     // printf("Key: %s\n", pairs->key);
 }
@@ -281,40 +299,32 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     Reducer to convert Key-Value pairs to desired output
     `len` number of pairs can be read starting from pairs, and output is stored in memory
 */
-__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
+__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, int *NUM_OUTPUT_D)
 {
+    int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (thread_id >= *NUM_OUTPUT_D)
+        return;
+
+    ShuffleAndSort_KeyPairOutput *current_pair = &pairs[thread_id];
+    output_type *current_output = &output[thread_id];
     // Find new centroid
     int new_values[DIMENSION];
     for (int i = 0; i < DIMENSION; i++)
         new_values[i] = 0;
-    int values_len = pairs->size;
+    int values_len = current_pair->size;
     for (int i = 0; i < values_len; i++)
     {
         for (int j = 0; j < DIMENSION; j++)
         {
-            int p_size = pairs->values[i].len[j];
-            int p_val = charPtrToInt(&pairs->values[i].values[j * MAX_WORD_SIZE], p_size);
-            new_values[j] += p_val;
+
+            new_values[j] += current_pair->values[i].values[j];
         }
     }
-
-    // // Take the key of any pair
-    // char *key = pairs[0].key;
-    // // find key size
-    // int key_size = 0;
-    // while (key[key_size] != '\0')
-    // {
-    //     key_size++;
-    // }
-
-    // // int cluster_idx = pairs[0].key;
-    // int cluster_idx = charPtrToInt(key, key_size);
-    // printf("Cluster Idx: %d\n", cluster_idx);
 
     for (int i = 0; i < DIMENSION; i++)
     {
         new_values[i] /= values_len;
-        intToCharPtr(new_values[i], output->len[i], &output->values[i * MAX_WORD_SIZE]);
+        current_output->values[i] = new_values[i];
         // printf("Output: %s\n", output[cluster_idx].values[i * MAX_WORD_SIZE]);
     }
 }
@@ -332,7 +342,11 @@ void initialize(input_type *input, output_type *output)
     for (int i = 0; i < NUM_OUTPUT; i++)
     {
         int sample = distribution.sample();
-        output[i] = input[sample];
+        for (int j = 0; j < DIMENSION; j++)
+        {
+            output[i].values[j] = charPtrToInt(&input[sample].values[j * MAX_WORD_SIZE], input[sample].len[j]);
+        }
+        // output[i] = input[sample];
     }
 }
 #endif // KMEANS_CUH

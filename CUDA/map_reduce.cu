@@ -8,8 +8,8 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include <cmath>
-// #include "kmeans.cuh"
-#include "wordcount.cuh"
+#include "kmeans.cuh"
+// #include "wordcount.cuh"
 #define MAX_THREADS_PER_BLOCK 1024
 
 using millis = std::chrono::milliseconds;
@@ -138,7 +138,7 @@ void runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *d
 
 __global__ void reduceKernel(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
 {
-    reducer(pairs, output);
+    reducer(pairs, output, NUM_OUTPUT_D);
 }
 
 void runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
@@ -221,6 +221,11 @@ void runPipeline(input_type *input, output_type *&output)
         thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
         cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
+        for (int i = 0; i < TOTAL_PAIRS; i++)
+        {
+            std::cout << host_pairs[i];
+        }
+        std::cout << std::endl;
         // sort(host_pairs, dev_pairs);
         // for (int i = 0; i < TOTAL_PAIRS; i++)
         // {
@@ -259,18 +264,30 @@ void runPipeline(input_type *input, output_type *&output)
         // 1. take ony 1 shuffle output object
         // 2. take the corresponding output object
         // 3. run reduce kernel
-        for (int i = 0; i < output_size; i++)
+        if (USE_REDUCTION == true)
         {
-            int shuffle_output_size = host_shuffle_output[i].size;
-            // calculate grid size for this kernel based on the values size
-            REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
-            REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
-            // copy the shuffle output to device
-            ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
-            cudaMalloc(&dev_shuffle_output, sizeof(ShuffleAndSort_KeyPairOutput));
-            cudaMemcpy(dev_shuffle_output, &host_shuffle_output[i], sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);
+            for (int i = 0; i < output_size; i++)
+            {
+                int shuffle_output_size = host_shuffle_output[i].size;
+                // calculate grid size for this kernel based on the values size
+                REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
+                REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
+                // copy the shuffle output to device
+                ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
+                cudaMalloc(&dev_shuffle_output, sizeof(ShuffleAndSort_KeyPairOutput));
+                cudaMemcpy(dev_shuffle_output, &host_shuffle_output[i], sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);
 
-            runReduceKernel(dev_shuffle_output, &dev_output[i], TOTAL_PAIRS_D, NUM_OUTPUT_D);
+                runReduceKernel(dev_shuffle_output, &dev_output[i], TOTAL_PAIRS_D, NUM_OUTPUT_D);
+                cudaFree(dev_shuffle_output);
+            }
+        }
+        else
+        {
+            ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
+            cudaMalloc(&dev_shuffle_output, output_size * sizeof(ShuffleAndSort_KeyPairOutput));
+            cudaMemcpy(dev_shuffle_output, host_shuffle_output, output_size * sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);
+
+            runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
             cudaFree(dev_shuffle_output);
         }
         // runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
@@ -487,11 +504,11 @@ void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&host_s
         }
     }
     output_size = shuffle_output->size();
-    // for (int i = 0; i < shuffle_output->size(); i++)
-    // {
-    //     std::cout << shuffle_output->at(i);
-    //     std::cout << std::endl;
-    // }
+    for (int i = 0; i < shuffle_output->size(); i++)
+    {
+        std::cout << shuffle_output->at(i);
+        std::cout << std::endl;
+    }
     // allocate memory for the output
     host_shuffle_output = (ShuffleAndSort_KeyPairOutput *)malloc(output_size * sizeof(ShuffleAndSort_KeyPairOutput));
     // copy data using memcpy and ->data()

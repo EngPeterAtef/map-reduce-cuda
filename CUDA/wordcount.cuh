@@ -7,6 +7,7 @@ const int MAP_BLOCK_SIZE = 512;
 int REDUCE_BLOCK_SIZE = 8;
 int MAP_GRID_SIZE;
 int REDUCE_GRID_SIZE;
+const bool USE_REDUCTION = true;
 
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
@@ -275,11 +276,11 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     pairs->value.values[0] = 1;
 }
 
-__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
+__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, int *NUM_OUTPUT_D)
 {
     // values size
     int values_size = pairs->size;
-    printf("Values size: %d\n", values_size);
+    // printf("Values size: %d\n", values_size);
 
     int tid = threadIdx.x;
     int start = blockIdx.x * blockDim.x * 2;
@@ -291,7 +292,7 @@ __device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output
     {
         int val_int1 = pairs->values[start + tid].values[0];
         shared_mem[tid] = val_int1;
-        printf("Val1: %d\n", val_int1);
+        // printf("Val1: %d\n", val_int1);
     }
     else
     {
@@ -301,7 +302,7 @@ __device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output
     {
         int val_int2 = pairs->values[start + blockDim.x + tid].values[0];
         shared_mem[tid + blockDim.x] = val_int2;
-        printf("Val2: %d\n", val_int2);
+        // printf("Val2: %d\n", val_int2);
     }
     else
     {
