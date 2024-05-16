@@ -6,20 +6,25 @@
 #include <sstream>
 #include <string>
 #include <cuda_runtime.h>
-#include "kmeans.cuh"
-// #include "wordcount.cuh"
+#include <vector>
+// #include "kmeans.cuh"
+#include "wordcount.cuh"
+#define MAX_THREADS_PER_BLOCK 1024
 
 using millis = std::chrono::milliseconds;
 using std::chrono::duration_cast;
 using std::chrono::steady_clock;
 
-void mergeSort(MyPair *array, int const begin, int const end, int n, MyPair *d_array);
 void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&dev_shuffle_output, int &output_size);
 void runPipeline(input_type *input, output_type *&output);
 void readData(input_type *&input, std::string filename, int &inputNum);
 void saveData(const output_type *output, std::string filename);
 void printDeviceProperties();
 void printMapReduceGPUParams(int mapBlockSize, int mapGridSize, int reduceBlockSize, int reduceGridSize);
+__global__ void mergeSortGPU(MyPair *arr, MyPair *temp, int n, int width);
+__global__ void bitonicSortGPU(MyPair *arr, int j, int k);
+void printArray(MyPair A[], int size);
+void sort(MyPair *host_pairs, MyPair *dev_pairs);
 
 int main(int argc, char *argv[])
 {
@@ -151,7 +156,22 @@ void runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_o
     reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
 }
+// Function to check if given number is a power of 2
+bool isPowerOfTwo(int num)
+{
+    return num > 0 && (num & (num - 1)) == 0;
+}
 
+// Automated function to check if array is sorted
+bool isSorted(MyPair *arr, int size)
+{
+    for (int i = 1; i < size; ++i)
+    {
+        if (PairCompare()(arr[i], arr[i - 1]))
+            return false;
+    }
+    return true;
+}
 void runPipeline(input_type *input, output_type *&output)
 {
     unsigned long long *NUM_INPUT_D;
@@ -207,10 +227,11 @@ void runPipeline(input_type *input, output_type *&output)
         runMapKernel(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
 
         // ================== SORT ==================
+        std::cout << "Start Sort" << std::endl;
+        host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
-        host_pairs = (MyPair *)malloc(pair_size);
-        cudaMemcpy(host_pairs, dev_pairs, pair_size, cudaMemcpyDeviceToHost);
-        mergeSort(host_pairs, 0, NUM_INPUT - 1, NUM_INPUT, dev_pairs);
+        // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
+        sort(host_pairs, dev_pairs);
         // for (int i = 0; i < TOTAL_PAIRS; i++)
         // {
         //     std::cout << host_pairs[i];
@@ -220,7 +241,8 @@ void runPipeline(input_type *input, output_type *&output)
         ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
         int output_size;
         combineUniqueKeys(host_pairs, dev_shuffle_output, output_size);
-        // // print shuffle output
+
+        // print shuffle output
         // for (int i = 0; i < shuffle_output->size(); i++)
         // {
         //     std::cout << shuffle_output->at(i);
@@ -261,7 +283,164 @@ void runPipeline(input_type *input, output_type *&output)
 // ===============================================================
 // ==========================SORT=================================
 // ===============================================================
+// GPU Kernel Implementation of Bitonic Sort
+__global__ void bitonicSortGPU(MyPair *arr, int j, int k)
+{
+    unsigned int i, ij;
 
+    i = threadIdx.x + blockDim.x * blockIdx.x;
+
+    ij = i ^ j;
+
+    if (ij > i)
+    {
+        if ((i & k) == 0)
+        {
+            if (PairCompareGreater()(arr[i], arr[ij]))
+            {
+                MyPair temp = arr[i];
+                arr[i] = arr[ij];
+                arr[ij] = temp;
+            }
+        }
+        else
+        {
+            if (PairCompare()(arr[i], arr[ij]))
+            {
+                MyPair temp = arr[i];
+                arr[i] = arr[ij];
+                arr[ij] = temp;
+            }
+        }
+    }
+}
+
+// Device function for recursive Merge
+__device__ void mergeSequential(MyPair *arr, MyPair *temp, int left, int middle, int right)
+{
+    int i = left;
+    int j = middle;
+    int k = left;
+
+    while (i < middle && j < right)
+    {
+        if (PairCompareLessEql()(arr[i], arr[j]))
+            temp[k++] = arr[i++];
+        else
+            temp[k++] = arr[j++];
+    }
+
+    while (i < middle)
+        temp[k++] = arr[i++];
+    while (j < right)
+        temp[k++] = arr[j++];
+
+    for (int x = left; x < right; x++)
+        arr[x] = temp[x];
+}
+
+// GPU Kernel for Merge Sort
+__global__ void mergeSortGPU(MyPair *arr, MyPair *temp, int n, int width)
+{
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
+    int left = tid * width;
+    int middle = left + width / 2;
+    int right = left + width;
+
+    if (left < n && middle < n)
+    {
+        mergeSequential(arr, temp, left, middle, right);
+    }
+}
+
+void sort(MyPair *host_pairs, MyPair *dev_pairs)
+{
+
+    // Perform GPU merge sort and measure time
+    cudaEvent_t startGPU, stopGPU;
+    cudaEventCreate(&startGPU);
+    cudaEventCreate(&stopGPU);
+    float millisecondsGPU = 0;
+
+    // Set number of threads and blocks for kernel calls
+    int threadsPerBlock = MAX_THREADS_PER_BLOCK;
+    int blocksPerGrid = (NUM_INPUT + threadsPerBlock - 1) / threadsPerBlock;
+
+    // Create GPU based arrays
+    MyPair *gpuTemp;
+    MyPair *gpuArrbiton;
+    MyPair *gpuArrmerge;
+    // Allocate memory on GPU
+    cudaMalloc(&gpuTemp, NUM_INPUT * sizeof(MyPair));
+    cudaMalloc(&gpuArrbiton, NUM_INPUT * sizeof(MyPair));
+    cudaMalloc(&gpuArrmerge, NUM_INPUT * sizeof(MyPair));
+
+    // Copy the input array to GPU memory
+    cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
+
+    // sort type
+    bool mergeSortFlag = false;
+
+    if (mergeSortFlag)
+    {
+        // Call GPU Merge Kernel and time the run
+        cudaEventRecord(startGPU);
+        for (int wid = 1; wid < NUM_INPUT; wid *= 2)
+        {
+            mergeSortGPU<<<threadsPerBlock, blocksPerGrid>>>(gpuArrmerge, gpuTemp, NUM_INPUT, wid * 2);
+        }
+        cudaEventRecord(stopGPU);
+
+        // Transfer sorted array back to CPU
+        cudaMemcpy(host_pairs, gpuArrmerge, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
+
+        // Calculate Elapsed GPU time
+        cudaEventSynchronize(stopGPU);
+        cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
+    }
+    else
+    {
+        // bitonic sort
+        if (isPowerOfTwo(NUM_INPUT))
+        {
+
+            int j, k;
+
+            // Time the run and call GPU Bitonic Kernel
+            cudaEventRecord(startGPU);
+            for (k = 2; k <= NUM_INPUT; k <<= 1)
+            {
+                for (j = k >> 1; j > 0; j = j >> 1)
+                {
+                    bitonicSortGPU<<<blocksPerGrid, threadsPerBlock>>>(gpuArrbiton, j, k);
+                }
+            }
+            cudaEventRecord(stopGPU);
+
+            // Transfer Sorted array back to CPU
+            cudaMemcpy(host_pairs, gpuArrbiton, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
+            cudaEventSynchronize(stopGPU);
+            cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
+        }
+        else
+        {
+            std::cout << "Size of array is not a power of 2. Please enter a power of 2 to use Bitonic Sort" << std::endl;
+        }
+    }
+    std::cout << "\n\nSorted GPU array: ";
+    // printArray(host_pairs, NUM_INPUT);
+    if (isSorted(host_pairs, NUM_INPUT))
+        std::cout << "\n\nSORT CHECKER RUNNING - SUCCESFULLY SORTED GPU ARRAY" << std::endl;
+    else
+        std::cout << "SORT CHECKER RUNNING - !!! FAIL !!!" << std::endl;
+    // Print the time of the runs
+    std::cout << "\n\nGPU Time: " << millisecondsGPU << " ms" << std::endl;
+    // End
+    cudaFree(gpuArrmerge);
+    cudaFree(gpuArrbiton);
+    cudaFree(gpuTemp);
+}
 // ===============================================================
 // ====================COMBINE UNIQUE KEYS========================
 // ===============================================================
@@ -303,6 +482,11 @@ void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&dev_sh
         }
     }
     output_size = shuffle_output->size();
+    // for (int i = 0; i < shuffle_output->size(); i++)
+    // {
+    //     std::cout << shuffle_output->at(i);
+    //     std::cout << std::endl;
+    // }
     // allocate memory for the output
     cudaMalloc(&dev_shuffle_output, output_size * sizeof(ShuffleAndSort_KeyPairOutput));
     cudaMemcpy(dev_shuffle_output, shuffle_output->data(), output_size * sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);

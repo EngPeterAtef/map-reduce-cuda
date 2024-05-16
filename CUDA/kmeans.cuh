@@ -19,9 +19,9 @@ int NUM_OUTPUT = 10;
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
-const int ITERATIONS = 10;
+const int ITERATIONS = 2;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 1001;
+const int MAX_INPUT_SIZE = 30000;
 
 struct Vector2D
 {
