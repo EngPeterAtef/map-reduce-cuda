@@ -63,11 +63,19 @@ struct PairCompare
         return lhs.key < rhs.key;
     }
 };
-struct PairCompare2
+struct PairCompareLessEql
 {
     __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
     {
         return lhs.key <= rhs.key;
+    }
+};
+
+struct PairCompareGreater
+{
+    __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
+    {
+        return lhs.key > rhs.key;
     }
 };
 

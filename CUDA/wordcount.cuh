@@ -150,7 +150,7 @@ struct PairCompare
         return myStrCmpLess(lhs.key, rhs.key);
     }
 };
-struct PairCompare2
+struct PairCompareLessEql
 {
     __host__ __device__ bool myStrCmpLessEqual(const char *str1, const char *str2)
     {

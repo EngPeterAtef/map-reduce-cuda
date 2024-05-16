@@ -4,10 +4,10 @@ kmeans s1.txt
 ====================================
 nvcc -O3 -dc merge_sort.cu
 nvcc -O3 -o merge_sort merge_sort.obj
-merge_sort s1.txt
+merge_sort ../data/Kmeans/s1_2_17.txt
 ====================================
 nvcc -O3 -dc int_merge_sort.cu
-nvcc -O3 -o int_merge_sort int_merge_sort.obj
+nvcc -O3 -o int_merge_sort int_merge_sort.objs
 int_merge_sort
 ====================================
 nvcc -O3 -dc .\new_int_merge_sort.cu
@@ -16,7 +16,7 @@ new_int_merge_sort
 ====================================
 nvcc -O3 -dc .\new_merge_sort.cu
 nvcc -O3 -o new_merge_sort new_merge_sort.obj
-new_merge_sort
+new_merge_sort ../data/Kmeans/s1_2_17.txt
 ====================================
 nvcc -O3 -dc .\cpu_merge_sort.cu
 nvcc -O3 -o cpu_merge_sort cpu_merge_sort.obj
