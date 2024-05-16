@@ -29,26 +29,18 @@ void bitonicSortCPU(MyPair *arr, int n)
                     {
                         if (PairCompareGreater()(arr[i], arr[ij]))
                         {
-                            MyPair temp;
-                            temp.key = arr[i].key;
-                            temp.value = arr[i].value;
-                            arr[i].key = arr[ij].key;
-                            arr[i].value = arr[ij].value;
-                            arr[ij].key = temp.key;
-                            arr[ij].value = temp.value;
+                            MyPair temp = arr[i];
+                            arr[i] = arr[ij];
+                            arr[ij] = temp;
                         }
                     }
                     else
                     {
                         if (PairCompare()(arr[i], arr[ij]))
                         {
-                            MyPair temp;
-                            temp.key = arr[i].key;
-                            temp.value = arr[i].value;
-                            arr[i].key = arr[ij].key;
-                            arr[i].value = arr[ij].value;
-                            arr[ij].key = temp.key;
-                            arr[ij].value = temp.value;
+                            MyPair temp = arr[i];
+                            arr[i] = arr[ij];
+                            arr[ij] = temp;
                         }
                     }
                 }
@@ -72,31 +64,18 @@ __global__ void bitonicSortGPU(MyPair *arr, int j, int k)
         {
             if (PairCompareGreater()(arr[i], arr[ij]))
             {
-                MyPair temp;
-                temp.key = arr[i].key;
-                temp.value = arr[i].value;
-
-                arr[i].key = arr[ij].key;
-                arr[i].value = arr[ij].value;
-
-                arr[ij].key = temp.key;
-                arr[ij].value = temp.value;
+                MyPair temp = arr[i];
+                arr[i] = arr[ij];
+                arr[ij] = temp;
             }
         }
         else
         {
             if (PairCompare()(arr[i], arr[ij]))
             {
-                MyPair temp;
-
-                temp.key = arr[i].key;
-                temp.value = arr[i].value;
-
-                arr[i].key = arr[ij].key;
-                arr[i].value = arr[ij].value;
-
-                arr[ij].key = temp.key;
-                arr[ij].value = temp.value;
+                MyPair temp = arr[i];
+                arr[i] = arr[ij];
+                arr[ij] = temp;
             }
         }
     }
@@ -107,8 +86,9 @@ __device__ void mergeSequential(MyPair *arr, MyPair *temp, int left, int middle,
 {
     int i = left;
     int j = middle;
-    int k = left;
-
+    int k = left; // index for temp array
+    // the first array is arr[left..middle-1]
+    // the second array is arr[middle..right-1]
     while (i < middle && j < right)
     {
         if (PairCompareLessEql()(arr[i], arr[j]))
