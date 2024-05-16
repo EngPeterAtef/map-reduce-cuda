@@ -145,6 +145,13 @@ void runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_o
 {
     reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE, 2 * REDUCE_BLOCK_SIZE * sizeof(MyOutputValue)>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
+    // error checking
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess)
+    {
+        fprintf(stderr, "ERROR: %s\n", cudaGetErrorString(error));
+        exit(-1);
+    }
 }
 // Function to check if given number is a power of 2
 bool isPowerOfTwo(int num)
