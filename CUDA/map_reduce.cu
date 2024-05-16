@@ -7,8 +7,8 @@
 #include <string>
 #include <cuda_runtime.h>
 #include <vector>
-// #include "kmeans.cuh"
-#include "wordcount.cuh"
+#include "kmeans.cuh"
+// #include "wordcount.cuh"
 #define MAX_THREADS_PER_BLOCK 1024
 
 using millis = std::chrono::milliseconds;
@@ -72,11 +72,11 @@ int main(int argc, char *argv[])
     std::cout << "==============Final Output==============" << "\n";
     std::cout << "========================================" << "\n";
     // Iterate through the output array
-    for (int i = 0; i < NUM_OUTPUT; i++)
-    {
-        std::cout << output[i];
-        std::cout << std::endl;
-    }
+    // for (int i = 0; i < NUM_OUTPUT; i++)
+    // {
+    //     std::cout << output[i];
+    //     std::cout << std::endl;
+    // }
 
     saveData(output, filename);
     // Free host memory
@@ -199,31 +199,34 @@ void runPipeline(input_type *input, output_type *&output)
 {
     unsigned long long *NUM_INPUT_D;
     unsigned long long *TOTAL_PAIRS_D;
-    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
-    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
-    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
-    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
     int *NUM_OUTPUT_D;
+    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
+    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
     cudaMalloc(&NUM_OUTPUT_D, sizeof(int));
-    cudaMemcpy(NUM_OUTPUT_D, &NUM_OUTPUT, sizeof(int), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
 
+    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMemcpy(NUM_OUTPUT_D, &NUM_OUTPUT, sizeof(int), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
+
+    size_t input_size = NUM_INPUT * sizeof(input_type);
+    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
+    size_t output_size = NUM_OUTPUT * sizeof(output_type);
     // Pointers for input, key-value pairs & output on device
     input_type *dev_input;
     output_type *dev_output;
     MyPair *dev_pairs;
 
     // Allocate memory on GPU for input
-    size_t input_size = NUM_INPUT * sizeof(input_type);
     cudaMalloc(&dev_input, input_size);
-
     // Allocate memory for key-value pairs
-    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
     cudaMalloc(&dev_pairs, pair_size);
-
     // Allocate memory for outputs
     // Since centroids are needed in K Means the entire time
-    size_t output_size = NUM_OUTPUT * sizeof(output_type);
     cudaMalloc(&dev_output, output_size);
+
+    // =================STREAMING=================
 
     cudaMemcpy(dev_input, input, input_size, cudaMemcpyHostToDevice);
 
@@ -246,19 +249,18 @@ void runPipeline(input_type *input, output_type *&output)
     {
         MyPair *host_pairs;
         // ================== MAP ==================
-        // TODO: USE STREAMING
         float temp = 0;
         temp = runMapKernel(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
         // Print the time of the runs
-        std::cout << "\n\nIteration " << iter << "Map function GPU Time: " << temp << " ms" << std::endl;
+        std::cout << "\n\nIteration " << iter << " Map function GPU Time: " << temp << " ms" << std::endl;
         mapGPUTime += temp;
         // ================== SORT ==================
-        std::cout << "Start Sort" << std::endl;
+        // std::cout << "Start Sort" << std::endl;
         host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
         temp = sort(host_pairs, dev_pairs);
-        std::cout << "\n\nIteration " << iter << "Sort function GPU Time: " << temp << " ms" << std::endl;
+        std::cout << "\n\nIteration " << iter << " Sort function GPU Time: " << temp << " ms" << std::endl;
         sortGPUTime += temp;
         // for (int i = 0; i < TOTAL_PAIRS; i++)
         // {
@@ -292,7 +294,7 @@ void runPipeline(input_type *input, output_type *&output)
 
         // ================== REDUCE ==================
         temp = runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
-        std::cout << "\n\nIteration " << iter << "Reduce function GPU Time: " << temp << " ms" << std::endl;
+        std::cout << "\n\nIteration " << iter << " Reduce function GPU Time: " << temp << " ms" << std::endl;
         reduceGPUTime += temp;
         // free the memory
         free(host_pairs);
@@ -414,23 +416,23 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice;
-    std::cout << "\nSelect the type of sort:";
-    std::cout << "\n\t1. Merge Sort";
-    std::cout << "\n\t2. Bitonic Sort";
-    std::cout << "\nEnter your choice: ";
-    std::cin >> choice;
-    if (choice < 1 || choice > 2)
-    {
-        while (choice != 1 || choice != 2)
-        {
-            std::cout << "\n!!!!! WRONG CHOICE. TRY AGAIN. YOU HAVE ONLY 2 DISTINCT OPTIONS-\n";
-            std::cin >> choice;
+    int choice = 1; // init with merge sort
+    // std::cout << "\nSelect the type of sort:";
+    // std::cout << "\n\t1. Merge Sort";
+    // std::cout << "\n\t2. Bitonic Sort";
+    // std::cout << "\nEnter your choice: ";
+    // std::cin >> choice;
+    // if (choice < 1 || choice > 2)
+    // {
+    //     while (choice != 1 || choice != 2)
+    //     {
+    //         std::cout << "\n!!!!! WRONG CHOICE. TRY AGAIN. YOU HAVE ONLY 2 DISTINCT OPTIONS-\n";
+    //         std::cin >> choice;
 
-            if (choice == 1 || choice == 2)
-                break;
-        }
-    }
+    //         if (choice == 1 || choice == 2)
+    //             break;
+    //     }
+    // }
 
     if (choice == 1)
     {
