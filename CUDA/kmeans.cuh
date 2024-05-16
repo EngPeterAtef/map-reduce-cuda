@@ -139,6 +139,34 @@ struct PairCompareLessEql
         return myStrCmpLessEqual(lhs.key, rhs.key);
     }
 };
+struct PairCompareGreater
+{
+    __host__ __device__ bool myStrCmpGreater(const char *str1, const char *str2)
+    {
+        while (*str1 && *str2 && *str1 == *str2)
+        {
+            ++str1;
+            ++str2;
+        }
+        // If both strings are equal up to the end of one of them or both have ended,
+        // return false (not considered greater)
+        if (*str1 == *str2)
+            return false;
+        // If one string has ended but the other hasn't, consider the one with the longer length as greater
+        if (!*str1 && *str2)
+            return false;
+        if (*str1 && !*str2)
+            return true;
+        // Otherwise, return the comparison result
+        return *str1 > *str2;
+    }
+
+    __host__ __device__ bool operator()(const MyPair &lhs, const MyPair &rhs)
+    {
+        // return lhs.key > rhs.key;
+        return myStrCmpGreater(lhs.key, rhs.key);
+    }
+};
 
 struct ShuffleAndSort_KeyPairOutput
 {
