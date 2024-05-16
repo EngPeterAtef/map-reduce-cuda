@@ -4,7 +4,7 @@
 
 // GPU parameters
 const int MAP_BLOCK_SIZE = 512;
-const int REDUCE_BLOCK_SIZE = 32;
+int REDUCE_BLOCK_SIZE = 8;
 int MAP_GRID_SIZE;
 int REDUCE_GRID_SIZE;
 
@@ -21,7 +21,7 @@ const int DIMENSION = 1;
 // No. of iterations
 const int ITERATIONS = 1;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 1000;
+const int MAX_INPUT_SIZE = 100;
 
 struct Vector2D
 {
@@ -46,6 +46,20 @@ struct Vector2D
         return os;
     }
 };
+struct PairVector
+{
+    int values[DIMENSION]; // Single character array
+
+    // Override << operator to print based on the variable DIMENSION
+    friend std::ostream &operator<<(std::ostream &os, const PairVector &vector)
+    {
+        for (int i = 0; i < DIMENSION; i++)
+        {
+            os << vector.values[i] << " ";
+        }
+        return os;
+    }
+};
 struct ReadVector
 {
     std::string values[DIMENSION];
@@ -65,7 +79,7 @@ using input_type = Vector2D; // Datapoint (or vector) read from the text file
 
 // So each point will get associated with a cluster (with id -> key)
 using Mykey = char;
-using MyValue = Vector2D;
+using MyValue = PairVector;
 using MyOutputValue = int;
 
 // Pair type definition
@@ -258,23 +272,41 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     }
     // pairs->key = input->values[0];
     // pairs->value = 1;
-    pairs->value.values[0] = '1';
-    pairs->value.len[0] = 1;
+    pairs->value.values[0] = 1;
 }
 
 __device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
 {
-    __shared__ int shared_mem[2 * REDUCE_BLOCK_SIZE];
+    // values size
+    int values_size = pairs->size;
+    printf("Values size: %d\n", values_size);
 
     int tid = threadIdx.x;
     int start = blockIdx.x * blockDim.x * 2;
 
-    // Load data from global memory to shared memory with coalescing
-    int val_int1 = charPtrToInt(pairs->values[start + tid].values, pairs->values[start + tid].len[0]);
-    int val_int2 = charPtrToInt(pairs->values[start + blockDim.x + tid].values, pairs->values[start + blockDim.x + tid].len[0]);
+    extern __shared__ int shared_mem[];
 
-    shared_mem[tid] = val_int1;
-    shared_mem[tid + blockDim.x] = val_int2;
+    // Load data from global memory to shared memory with coalescing
+    if (start + tid < values_size)
+    {
+        int val_int1 = pairs->values[start + tid].values[0];
+        shared_mem[tid] = val_int1;
+        printf("Val1: %d\n", val_int1);
+    }
+    else
+    {
+        shared_mem[tid] = 0;
+    }
+    if (start + blockDim.x + tid < values_size)
+    {
+        int val_int2 = pairs->values[start + blockDim.x + tid].values[0];
+        shared_mem[tid + blockDim.x] = val_int2;
+        printf("Val2: %d\n", val_int2);
+    }
+    else
+    {
+        shared_mem[tid + blockDim.x] = 0;
+    }
 
     // Perform reduction in shared memory
     for (int stride = blockDim.x; stride > 0; stride /= 2)

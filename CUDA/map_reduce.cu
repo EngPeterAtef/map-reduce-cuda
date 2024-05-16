@@ -7,6 +7,7 @@
 #include <string>
 #include <cuda_runtime.h>
 #include <vector>
+#include <cmath>
 // #include "kmeans.cuh"
 #include "wordcount.cuh"
 #define MAX_THREADS_PER_BLOCK 1024
@@ -142,7 +143,7 @@ __global__ void reduceKernel(ShuffleAndSort_KeyPairOutput *pairs, output_type *o
 
 void runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
 {
-    reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
+    reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE, 2 * REDUCE_BLOCK_SIZE * sizeof(MyOutputValue)>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
 }
 // Function to check if given number is a power of 2
@@ -262,7 +263,8 @@ void runPipeline(input_type *input, output_type *&output)
         {
             int shuffle_output_size = host_shuffle_output[i].size;
             // calculate grid size for this kernel based on the values size
-            REDUCE_GRID_SIZE = (shuffle_output_size + (REDUCE_BLOCK_SIZE * 2) - 1) / (REDUCE_BLOCK_SIZE * 2);
+            REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
+            REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
             // copy the shuffle output to device
             ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
             cudaMalloc(&dev_shuffle_output, sizeof(ShuffleAndSort_KeyPairOutput));
@@ -467,10 +469,9 @@ void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&host_s
                 {
                     // copy key
                     current_pair.key[j] = host_pairs[i].key[j];
-                    // copy value
-                    current_pair.values[0].values[k * MAX_WORD_SIZE + j] = host_pairs[i].value.values[k * MAX_WORD_SIZE + j];
                 }
-                current_pair.values[0].len[k] = host_pairs[i].value.len[k];
+                // copy value
+                current_pair.values[0].values[k] = host_pairs[i].value.values[k];
             }
             current_pair.size = 1;
             shuffle_output->push_back(current_pair);
@@ -479,11 +480,8 @@ void combineUniqueKeys(MyPair *host_pairs, ShuffleAndSort_KeyPairOutput *&host_s
         {
             for (int k = 0; k < DIMENSION; k++)
             {
-                for (int j = 0; j < MAX_WORD_SIZE; j++)
-                {
-                    shuffle_output->back().values[shuffle_output->back().size].values[k * MAX_WORD_SIZE + j] = host_pairs[i].value.values[k * MAX_WORD_SIZE + j];
-                }
-                shuffle_output->back().values[shuffle_output->back().size].len[k] = host_pairs[i].value.len[k];
+                // copy value
+                shuffle_output->back().values[shuffle_output->back().size].values[k] = host_pairs[i].value.values[k];
             }
             shuffle_output->back().size++;
         }
