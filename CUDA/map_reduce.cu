@@ -380,7 +380,7 @@ void sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
     // sort type
-    bool mergeSortFlag = false;
+    bool mergeSortFlag = true;
 
     if (mergeSortFlag)
     {

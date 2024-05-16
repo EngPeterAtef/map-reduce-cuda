@@ -269,12 +269,22 @@ __device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output
 {
 
     int values_size = pairs->size;
+    // copy key to output key
     for (int i = 0; i < MAX_WORD_SIZE; i++)
     {
         output->key[i] = pairs->key[i];
     }
+    // sum list values
+    int sum = 0;
+    for (int i = 0; i < values_size; i++)
+    {
+        // len[0] because we only have 1 dimension (each line has 1 name)
+        int val_int = charPtrToInt(pairs->values[i].values, pairs->values[i].len[0]);
+        sum += val_int;
+    }
+    // copy sum to output value
     int len;
-    intToCharPtr(values_size, len, output->value);
+    intToCharPtr(sum, len, output->value);
     // printf("Key: %s, Value: %s, idx %d\n", output->key, output->value, outputIdx);
 }
 
