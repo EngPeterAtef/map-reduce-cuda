@@ -7,7 +7,7 @@
 
 #include "random_generator.hpp"
 
-int map_num_threads = 2;
+int map_num_threads = 1;
 int reduce_num_threads = 1;
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
@@ -18,7 +18,7 @@ const int NUM_OUTPUT = 10;
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
-const int ITERATIONS = 1000;
+const int ITERATIONS = 10;
 unsigned long long TOTAL_PAIRS;
 
 // Custom types
