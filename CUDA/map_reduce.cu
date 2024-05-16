@@ -24,7 +24,7 @@ void printMapReduceGPUParams(int mapBlockSize, int mapGridSize, int reduceBlockS
 __global__ void mergeSortGPU(MyPair *arr, MyPair *temp, int n, int width);
 __global__ void bitonicSortGPU(MyPair *arr, int j, int k);
 void printArray(MyPair A[], int size);
-void sort(MyPair *host_pairs, MyPair *dev_pairs);
+float sort(MyPair *host_pairs, MyPair *dev_pairs);
 
 int main(int argc, char *argv[])
 {
@@ -122,10 +122,21 @@ __global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *d
     }
 }
 
-void runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D, int *NUM_OUTPUT_D)
+float runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D, int *NUM_OUTPUT_D)
 {
+    // Perform GPU merge sort and measure time
+    cudaEvent_t startGPU, stopGPU;
+    cudaEventCreate(&startGPU);
+    cudaEventCreate(&stopGPU);
+    float millisecondsGPU = 0;
+    cudaEventRecord(startGPU);
+
     mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
+    cudaEventRecord(stopGPU);
+    // Calculate Elapsed GPU time
+    cudaEventSynchronize(stopGPU);
+    cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
     // error checking
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess)
@@ -133,6 +144,7 @@ void runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *d
         fprintf(stderr, "ERROR: %s\n", cudaGetErrorString(error));
         exit(-1);
     }
+    return millisecondsGPU;
 }
 
 __global__ void reduceKernel(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
@@ -151,10 +163,21 @@ __global__ void reduceKernel(ShuffleAndSort_KeyPairOutput *pairs, output_type *o
     }
 }
 
-void runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
+float runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_output, unsigned long long *TOTAL_PAIRS_D, int *NUM_OUTPUT_D)
 {
+    // Perform GPU merge sort and measure time
+    cudaEvent_t startGPU, stopGPU;
+    cudaEventCreate(&startGPU);
+    cudaEventCreate(&stopGPU);
+    float millisecondsGPU = 0;
+    cudaEventRecord(startGPU);
     reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
+    cudaEventRecord(stopGPU);
+    // Calculate Elapsed GPU time
+    cudaEventSynchronize(stopGPU);
+    cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
+    return millisecondsGPU;
 }
 // Function to check if given number is a power of 2
 bool isPowerOfTwo(int num)
@@ -217,21 +240,26 @@ void runPipeline(input_type *input, output_type *&output)
 
     // Copy initial centroids to device
     cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
-
+    float mapGPUTime = 0, reduceGPUTime = 0, sortGPUTime = 0;
     // Now run K Means for the specified iterations
     for (int iter = 0; iter < ITERATIONS; iter++)
     {
         MyPair *host_pairs;
         // ================== MAP ==================
         // TODO: USE STREAMING
-        runMapKernel(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
-
+        float temp = 0;
+        temp = runMapKernel(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
+        // Print the time of the runs
+        std::cout << "\n\nIteration " << iter << "Map function GPU Time: " << temp << " ms" << std::endl;
+        mapGPUTime += temp;
         // ================== SORT ==================
         std::cout << "Start Sort" << std::endl;
         host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
-        sort(host_pairs, dev_pairs);
+        temp = sort(host_pairs, dev_pairs);
+        std::cout << "\n\nIteration " << iter << "Sort function GPU Time: " << temp << " ms" << std::endl;
+        sortGPUTime += temp;
         // for (int i = 0; i < TOTAL_PAIRS; i++)
         // {
         //     std::cout << host_pairs[i];
@@ -263,7 +291,9 @@ void runPipeline(input_type *input, output_type *&output)
         }
 
         // ================== REDUCE ==================
-        runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
+        temp = runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
+        std::cout << "\n\nIteration " << iter << "Reduce function GPU Time: " << temp << " ms" << std::endl;
+        reduceGPUTime += temp;
         // free the memory
         free(host_pairs);
         cudaFree(dev_shuffle_output);
@@ -278,6 +308,11 @@ void runPipeline(input_type *input, output_type *&output)
     cudaFree(NUM_INPUT_D);
     cudaFree(TOTAL_PAIRS_D);
     cudaFree(NUM_OUTPUT_D);
+
+    // show the total time of each kernel
+    std::cout << "\n\nTotal Map GPU Time: " << mapGPUTime << " ms" << std::endl;
+    std::cout << "\n\nTotal Sort GPU Time: " << sortGPUTime << " ms" << std::endl;
+    std::cout << "\n\nTotal Reduce GPU Time: " << reduceGPUTime << " ms" << std::endl;
 }
 
 // ===============================================================
@@ -353,7 +388,7 @@ __global__ void mergeSortGPU(MyPair *arr, MyPair *temp, int n, int width)
     }
 }
 
-void sort(MyPair *host_pairs, MyPair *dev_pairs)
+float sort(MyPair *host_pairs, MyPair *dev_pairs)
 {
 
     // Perform GPU merge sort and measure time
@@ -379,11 +414,28 @@ void sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    // sort type
-    bool mergeSortFlag = false;
-
-    if (mergeSortFlag)
+    int choice;
+    std::cout << "\nSelect the type of sort:";
+    std::cout << "\n\t1. Merge Sort";
+    std::cout << "\n\t2. Bitonic Sort";
+    std::cout << "\nEnter your choice: ";
+    std::cin >> choice;
+    if (choice < 1 || choice > 2)
     {
+        while (choice != 1 || choice != 2)
+        {
+            std::cout << "\n!!!!! WRONG CHOICE. TRY AGAIN. YOU HAVE ONLY 2 DISTINCT OPTIONS-\n";
+            std::cin >> choice;
+
+            if (choice == 1 || choice == 2)
+                break;
+        }
+    }
+
+    if (choice == 1)
+    {
+        std::cout << "\n--------------------------------------------------------------\nMERGE SORT SELECTED\n--------------------------------------------------------------";
+
         // Call GPU Merge Kernel and time the run
         cudaEventRecord(startGPU);
         for (int wid = 1; wid < NUM_INPUT; wid *= 2)
@@ -401,6 +453,8 @@ void sort(MyPair *host_pairs, MyPair *dev_pairs)
     }
     else
     {
+        std::cout << "\n--------------------------------------------------------------\nBITONIC SORT SELECTED\n--------------------------------------------------------------";
+
         // bitonic sort
         if (isPowerOfTwo(NUM_INPUT))
         {
@@ -435,11 +489,12 @@ void sort(MyPair *host_pairs, MyPair *dev_pairs)
     else
         std::cout << "SORT CHECKER RUNNING - !!! FAIL !!!" << std::endl;
     // Print the time of the runs
-    std::cout << "\n\nGPU Time: " << millisecondsGPU << " ms" << std::endl;
+    // std::cout << "\n\nSorting GPU Time: " << millisecondsGPU << " ms" << std::endl;
     // End
     cudaFree(gpuArrmerge);
     cudaFree(gpuArrbiton);
     cudaFree(gpuTemp);
+    return millisecondsGPU;
 }
 // ===============================================================
 // ====================COMBINE UNIQUE KEYS========================
