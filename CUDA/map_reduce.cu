@@ -257,6 +257,8 @@ void runPipeline(input_type *input, output_type *&output)
     float mapGPUTime = 0, reduceGPUTime = 0, sortGPUTime = 0;
 
     MyPair *host_pairs;
+    cudaMallocHost(&host_pairs, NUM_INPUT * sizeof(MyPair));
+
     cudaEventRecord(startGPU);
     for (int iter = 0; iter < ITERATIONS; iter++)
     {
@@ -291,7 +293,6 @@ void runPipeline(input_type *input, output_type *&output)
         // ================== SORT ==================
         // std::cout << "Start Sort" << std::endl;
         // host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
-        cudaMallocHost(&host_pairs, NUM_INPUT * sizeof(MyPair));
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
         temp = sort(host_pairs, dev_pairs);
@@ -338,7 +339,6 @@ void runPipeline(input_type *input, output_type *&output)
         std::cout << "\n\nIteration " << iter << " Total GPU Time: " << iterationTime << " ms" << std::endl;
     }
     // free the memory
-    cudaFreeHost(host_pairs);
     cudaDeviceSynchronize();
     cudaEventRecord(stopGPU);
     // Calculate Elapsed GPU time
@@ -348,6 +348,7 @@ void runPipeline(input_type *input, output_type *&output)
     cudaMemcpy(output, dev_output, NUM_OUTPUT * sizeof(output_type), cudaMemcpyDeviceToHost);
 
     // Free all memory allocated on GPU
+    cudaFreeHost(host_pairs);
     cudaFree(dev_input);
     cudaFree(dev_pairs);
     cudaFree(dev_output);
@@ -461,7 +462,7 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice = 1; // init with merge sort
+    int choice = 2; // init with merge sort
     // std::cout << "\nSelect the type of sort:";
     // std::cout << "\n\t1. Merge Sort";
     // std::cout << "\n\t2. Bitonic Sort";
