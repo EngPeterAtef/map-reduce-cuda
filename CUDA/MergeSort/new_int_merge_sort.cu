@@ -102,7 +102,7 @@ __device__ void Merge(int *arr, int *temp, int left, int middle, int right)
 }
 
 // GPU Kernel for Merge Sort
-__global__ void MergeSortGPU(int *arr, int *temp, int n, int width)
+__global__ void mergeSortGPU(int *arr, int *temp, int n, int width)
 {
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
     int left = tid * width;
@@ -289,7 +289,7 @@ int main()
         cudaEventRecord(startGPU);
         for (int wid = 1; wid < size; wid *= 2)
         {
-            MergeSortGPU<<<threadsPerBlock, blocksPerGrid>>>(gpuArrmerge, gpuTemp, size, wid * 2);
+            mergeSortGPU<<<threadsPerBlock, blocksPerGrid>>>(gpuArrmerge, gpuTemp, size, wid * 2);
         }
         cudaEventRecord(stopGPU);
 

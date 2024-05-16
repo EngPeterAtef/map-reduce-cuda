@@ -75,8 +75,10 @@ __global__ void bitonicSortGPU(MyPair *arr, int j, int k)
                 MyPair temp;
                 temp.key = arr[i].key;
                 temp.value = arr[i].value;
+
                 arr[i].key = arr[ij].key;
                 arr[i].value = arr[ij].value;
+
                 arr[ij].key = temp.key;
                 arr[ij].value = temp.value;
             }
@@ -86,10 +88,13 @@ __global__ void bitonicSortGPU(MyPair *arr, int j, int k)
             if (PairCompare()(arr[i], arr[ij]))
             {
                 MyPair temp;
+
                 temp.key = arr[i].key;
                 temp.value = arr[i].value;
+
                 arr[i].key = arr[ij].key;
                 arr[i].value = arr[ij].value;
+
                 arr[ij].key = temp.key;
                 arr[ij].value = temp.value;
             }
@@ -122,7 +127,7 @@ __device__ void mergeSequential(MyPair *arr, MyPair *temp, int left, int middle,
 }
 
 // GPU Kernel for Merge Sort
-__global__ void MergeSortGPU(MyPair *arr, MyPair *temp, int n, int width)
+__global__ void mergeSortGPU(MyPair *arr, MyPair *temp, int n, int width)
 {
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
     int left = tid * width;
@@ -315,7 +320,7 @@ int main(int argc, char *argv[])
         cudaEventRecord(startGPU);
         for (int wid = 1; wid < size; wid *= 2)
         {
-            MergeSortGPU<<<threadsPerBlock, blocksPerGrid>>>(gpuArrmerge, gpuTemp, size, wid * 2);
+            mergeSortGPU<<<threadsPerBlock, blocksPerGrid>>>(gpuArrmerge, gpuTemp, size, wid * 2);
         }
         cudaEventRecord(stopGPU);
 
