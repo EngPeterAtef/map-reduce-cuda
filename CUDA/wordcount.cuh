@@ -12,6 +12,8 @@ int REDUCE_GRID_SIZE;
 unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
+// no. of output elements
+// 0 means it will be calculated by the program based on the number of unique keys
 int NUM_OUTPUT = 0;
 
 // No. of values in each line (Size of datapoint)
@@ -62,8 +64,9 @@ struct ReadVector
 using input_type = Vector2D; // Datapoint (or vector) read from the text file
 
 // So each point will get associated with a cluster (with id -> key)
-using Mykey = char;       // Cluster that the point corresponds to
-using MyValue = Vector2D; // Point associated with the cluster
+using Mykey = char;
+using MyValue = Vector2D;
+using MyOutputValue = int;
 
 // Pair type definition
 struct MyPair
@@ -83,7 +86,7 @@ struct MyPair
 struct MyOutputPair
 {
     Mykey key[MAX_WORD_SIZE];
-    Mykey value[MAX_WORD_SIZE];
+    MyOutputValue value = 0;
 
     // Printing for debugging
     friend std::ostream &operator<<(std::ostream &os, const MyOutputPair &pair)
@@ -98,13 +101,7 @@ struct MyOutputPair
         }
         os << ", ";
         os << "Value: ";
-        for (int i = 0; i < MAX_WORD_SIZE; i++)
-        {
-            char currentChar = pair.value[i]; // Access value instead of key
-            if (currentChar == '\0')
-                break;
-            os << currentChar;
-        }
+        os << pair.value;
 
         return os;
     }
@@ -267,25 +264,38 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
 
 __device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
 {
+    __shared__ int shared_mem[2 * REDUCE_BLOCK_SIZE];
 
-    int values_size = pairs->size;
-    // copy key to output key
-    for (int i = 0; i < MAX_WORD_SIZE; i++)
+    int tid = threadIdx.x;
+    int start = blockIdx.x * blockDim.x * 2;
+
+    // Load data from global memory to shared memory with coalescing
+    int val_int1 = charPtrToInt(pairs->values[start + tid].values, pairs->values[start + tid].len[0]);
+    int val_int2 = charPtrToInt(pairs->values[start + blockDim.x + tid].values, pairs->values[start + blockDim.x + tid].len[0]);
+
+    shared_mem[tid] = val_int1;
+    shared_mem[tid + blockDim.x] = val_int2;
+
+    // Perform reduction in shared memory
+    for (int stride = blockDim.x; stride > 0; stride /= 2)
     {
-        output->key[i] = pairs->key[i];
+        __syncthreads();
+        if (tid < stride)
+        {
+            shared_mem[tid] += shared_mem[tid + stride];
+        }
     }
-    // sum list values
-    int sum = 0;
-    for (int i = 0; i < values_size; i++)
+
+    // Write the result back to global memory
+    if (tid == 0)
     {
-        // len[0] because we only have 1 dimension (each line has 1 name)
-        int val_int = charPtrToInt(pairs->values[i].values, pairs->values[i].len[0]);
-        sum += val_int;
+        atomicAdd(&output->value, shared_mem[0]);
+        // copy key to output key
+        for (int i = 0; i < MAX_WORD_SIZE; i++)
+        {
+            output->key[i] = pairs->key[i];
+        }
     }
-    // copy sum to output value
-    int len;
-    intToCharPtr(sum, len, output->value);
-    // printf("Key: %s, Value: %s, idx %d\n", output->key, output->value, outputIdx);
 }
 
 void initialize(input_type *input, output_type *output)
