@@ -4,14 +4,17 @@
 
 // GPU parameters
 const int MAP_BLOCK_SIZE = 512;
-const int REDUCE_BLOCK_SIZE = 32;
+int REDUCE_BLOCK_SIZE = 8;
 int MAP_GRID_SIZE;
 int REDUCE_GRID_SIZE;
+const bool USE_REDUCTION = true;
 
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
+// no. of output elements
+// 0 means it will be calculated by the program based on the number of unique keys
 int NUM_OUTPUT = 0;
 
 // No. of values in each line (Size of datapoint)
@@ -19,7 +22,7 @@ const int DIMENSION = 1;
 // No. of iterations
 const int ITERATIONS = 1;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 1000;
+const int MAX_INPUT_SIZE = 5000;
 
 struct Vector2D
 {
@@ -44,6 +47,20 @@ struct Vector2D
         return os;
     }
 };
+struct PairVector
+{
+    int values[DIMENSION]; // Single character array
+
+    // Override << operator to print based on the variable DIMENSION
+    friend std::ostream &operator<<(std::ostream &os, const PairVector &vector)
+    {
+        for (int i = 0; i < DIMENSION; i++)
+        {
+            os << vector.values[i] << " ";
+        }
+        return os;
+    }
+};
 struct ReadVector
 {
     std::string values[DIMENSION];
@@ -62,8 +79,9 @@ struct ReadVector
 using input_type = Vector2D; // Datapoint (or vector) read from the text file
 
 // So each point will get associated with a cluster (with id -> key)
-using Mykey = char;       // Cluster that the point corresponds to
-using MyValue = Vector2D; // Point associated with the cluster
+using Mykey = char;
+using MyValue = PairVector;
+using MyOutputValue = int;
 
 // Pair type definition
 struct MyPair
@@ -83,7 +101,7 @@ struct MyPair
 struct MyOutputPair
 {
     Mykey key[MAX_WORD_SIZE];
-    Mykey value[MAX_WORD_SIZE];
+    MyOutputValue value = 0;
 
     // Printing for debugging
     friend std::ostream &operator<<(std::ostream &os, const MyOutputPair &pair)
@@ -98,13 +116,7 @@ struct MyOutputPair
         }
         os << ", ";
         os << "Value: ";
-        for (int i = 0; i < MAX_WORD_SIZE; i++)
-        {
-            char currentChar = pair.value[i]; // Access value instead of key
-            if (currentChar == '\0')
-                break;
-            os << currentChar;
-        }
+        os << pair.value;
 
         return os;
     }
@@ -261,21 +273,74 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
     }
     // pairs->key = input->values[0];
     // pairs->value = 1;
-    pairs->value.values[0] = '1';
-    pairs->value.len[0] = 1;
+    pairs->value.values[0] = 1;
 }
 
-__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output)
+__device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, int *NUM_OUTPUT_D)
 {
-
     int values_size = pairs->size;
-    for (int i = 0; i < MAX_WORD_SIZE; i++)
+    // printf("Values size: %d\n", values_size);
+
+    int tid = threadIdx.x;
+    int start = blockIdx.x * blockDim.x * 2;
+
+    extern __shared__ int shared_mem[];
+
+    // Initialize shared memory
+    if (start + tid < values_size)
     {
-        output->key[i] = pairs->key[i];
+        int val_int1 = pairs->values[start + tid].values[0];
+        shared_mem[tid] = val_int1;
+        // printf("Val1: %d\n", val_int1);
     }
-    int len;
-    intToCharPtr(values_size, len, output->value);
-    // printf("Key: %s, Value: %s, idx %d\n", output->key, output->value, outputIdx);
+    else
+    {
+        shared_mem[tid] = 0;
+    }
+
+    if (start + blockDim.x + tid < values_size)
+    {
+        int val_int2 = pairs->values[start + blockDim.x + tid].values[0];
+        shared_mem[tid + blockDim.x] = val_int2;
+        // printf("Val2: %d\n", val_int2);
+    }
+    else
+    {
+        shared_mem[tid + blockDim.x] = 0;
+    }
+
+    __syncthreads(); // Synchronize to ensure all shared memory is loaded
+
+    // Perform reduction in shared memory
+    for (int stride = blockDim.x; stride > 0; stride /= 2)
+    {
+        __syncthreads(); // Synchronize before accessing shared memory
+        if (tid < stride)
+        {
+            shared_mem[tid] += shared_mem[tid + stride];
+        }
+    }
+
+    __syncthreads(); // Synchronize before writing the result back
+
+    // Write the result back to global memory
+    if (tid == 0)
+    {
+        // printf("shared mem[0]: %d\n", shared_mem[0]);
+        atomicAdd(&output->value, shared_mem[0]);
+
+        // Ensure output key is set only once correctly
+        if (blockIdx.x == 0)
+        {
+            for (int i = 0; i < MAX_WORD_SIZE; i++)
+            {
+                output->key[i] = pairs->key[i];
+            }
+        }
+
+        // printf("Output key: %s\n", output->key);
+        // printf("Output value: %d\n", output->value);
+    }
 }
 
 void initialize(input_type *input, output_type *output)

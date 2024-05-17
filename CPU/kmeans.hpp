@@ -13,12 +13,12 @@ int reduce_num_threads = 1;
 unsigned long long NUM_INPUT;
 
 // Number of output clusters K
-const int NUM_OUTPUT = 10;
+const int NUM_OUTPUT = 50;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
-const int ITERATIONS = 10;
+const int ITERATIONS = 2;
 unsigned long long TOTAL_PAIRS;
 
 // Custom types
