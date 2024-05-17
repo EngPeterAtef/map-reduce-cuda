@@ -8,8 +8,8 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include <cmath>
-#include "kmeans.cuh"
-// #include "wordcount.cuh"
+// #include "kmeans.cuh"
+#include "wordcount.cuh"
 #define MAX_THREADS_PER_BLOCK 1024
 
 using millis = std::chrono::milliseconds;
@@ -214,7 +214,7 @@ void runPipeline(input_type *input, output_type *&output)
 
     // Copy initial centroids to device
     cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
-
+    int64_t t_seq_combine;
     // Now run K Means for the specified iterations
     for (int iter = 0; iter < ITERATIONS; iter++)
     {
@@ -225,15 +225,15 @@ void runPipeline(input_type *input, output_type *&output)
 
         // ================== SORT ==================
         // std::cout << "Start Sort" << std::endl;
-        thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
+        // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
-        cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
-        for (int i = 0; i < TOTAL_PAIRS; i++)
-        {
-            std::cout << host_pairs[i];
-        }
-        std::cout << std::endl;
-        // sort(host_pairs, dev_pairs);
+        // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
+        // for (int i = 0; i < TOTAL_PAIRS; i++)
+        // {
+        //     std::cout << host_pairs[i];
+        // }
+        // std::cout << std::endl;
+        sort(host_pairs, dev_pairs);
         // for (int i = 0; i < TOTAL_PAIRS; i++)
         // {
         //     std::cout << host_pairs[i];
@@ -242,7 +242,20 @@ void runPipeline(input_type *input, output_type *&output)
         // ============= Combine unique keys =============
         ShuffleAndSort_KeyPairOutput *host_shuffle_output;
         int output_size;
+        auto t_seq_before_combine = steady_clock::now();
         combineUniqueKeys(host_pairs, host_shuffle_output, output_size);
+        auto t_seq_after_combine = steady_clock::now();
+        if (iter == 0)
+        {
+            t_seq_combine = duration_cast<millis>(t_seq_after_combine - t_seq_before_combine).count();
+            // std::cout << "Time for combine unique keys: " << t_seq_combine << " milliseconds\n";
+        }
+        else
+        {
+            t_seq_combine += duration_cast<millis>(t_seq_after_combine - t_seq_before_combine).count();
+            // std::cout << "Time for combine unique keys: " << t_seq_combine << " milliseconds\n";
+        }
+
         // ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
         // cudaMalloc(&dev_shuffle_output, output_size * sizeof(ShuffleAndSort_KeyPairOutput));
         // cudaMemcpy(dev_shuffle_output, host_shuffle_output, output_size * sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);
@@ -277,8 +290,10 @@ void runPipeline(input_type *input, output_type *&output)
             {
                 int shuffle_output_size = host_shuffle_output[i].size;
                 // calculate grid size for this kernel based on the values size
-                REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
-                REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
+                REDUCE_BLOCK_SIZE = 256;
+                REDUCE_GRID_SIZE = (shuffle_output_size + (REDUCE_BLOCK_SIZE * 2) - 1) / (REDUCE_BLOCK_SIZE * 2);
+                // REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
+                // REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
                 // copy the shuffle output to device
                 ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
                 cudaMalloc(&dev_shuffle_output, sizeof(ShuffleAndSort_KeyPairOutput));
@@ -311,6 +326,7 @@ void runPipeline(input_type *input, output_type *&output)
     cudaFree(NUM_INPUT_D);
     cudaFree(TOTAL_PAIRS_D);
     cudaFree(NUM_OUTPUT_D);
+    std::cout << "Time for combine unique keys: " << t_seq_combine << " milliseconds\n";
 }
 
 // ===============================================================
@@ -413,7 +429,7 @@ void sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
     // sort type
-    bool mergeSortFlag = true;
+    bool mergeSortFlag = false;
 
     if (mergeSortFlag)
     {

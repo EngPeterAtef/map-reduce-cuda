@@ -22,7 +22,7 @@ const int DIMENSION = 1;
 // No. of iterations
 const int ITERATIONS = 1;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 100;
+const int MAX_INPUT_SIZE = 5000;
 
 struct Vector2D
 {
