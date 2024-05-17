@@ -342,8 +342,10 @@ void runPipeline(input_type *input, output_type *&output)
             {
                 int shuffle_output_size = host_shuffle_output[i].size;
                 // calculate grid size for this kernel based on the values size
-                REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
-                REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
+                REDUCE_BLOCK_SIZE = 256;
+                REDUCE_GRID_SIZE = (shuffle_output_size + REDUCE_BLOCK_SIZE * 2 - 1) / (REDUCE_BLOCK_SIZE * 2);
+                // REDUCE_BLOCK_SIZE = ceil(shuffle_output_size / 2.0);
+                // REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
                 // copy the shuffle output to device
                 ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
                 // std::cout << "before malloc Shuffle output size: " << shuffle_output_size << std::endl;
@@ -504,7 +506,7 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice = 1; // init with merge sort
+    int choice = 2; // init with merge sort
     // std::cout << "\nSelect the type of sort:";
     // std::cout << "\n\t1. Merge Sort";
     // std::cout << "\n\t2. Bitonic Sort";

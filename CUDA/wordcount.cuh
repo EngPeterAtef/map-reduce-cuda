@@ -22,7 +22,7 @@ const int DIMENSION = 1;
 // No. of iterations
 const int ITERATIONS = 1;
 const int MAX_WORD_SIZE = 10;
-const int MAX_INPUT_SIZE = 512;
+const int MAX_INPUT_SIZE = 5000;
 
 struct Vector2D
 {
@@ -278,64 +278,68 @@ __device__ void mapper(const input_type *input, MyPair *pairs, output_type *outp
 
 __device__ void reducer(ShuffleAndSort_KeyPairOutput *pairs, output_type *output, int *NUM_OUTPUT_D)
 {
-    // values size
     int values_size = pairs->size;
-    printf("Values size: %d\n", values_size);
+    // printf("Values size: %d\n", values_size);
 
     int tid = threadIdx.x;
     int start = blockIdx.x * blockDim.x * 2;
 
     extern __shared__ int shared_mem[];
 
-    // Load data from global memory to shared memory with coalescing
+    // Initialize shared memory
     if (start + tid < values_size)
     {
-        // printf("Start: %d, Tid: %d\n", start, tid);
         int val_int1 = pairs->values[start + tid].values[0];
-
-        printf("Val1: %d\n", val_int1);
         shared_mem[tid] = val_int1;
-        // printf("Shared mem: %d\n", shared_mem[tid]);
+        // printf("Val1: %d\n", val_int1);
     }
     else
     {
         shared_mem[tid] = 0;
     }
+
     if (start + blockDim.x + tid < values_size)
     {
-        // printf("Start: %d, Tid: %d\n", start, tid);
         int val_int2 = pairs->values[start + blockDim.x + tid].values[0];
         shared_mem[tid + blockDim.x] = val_int2;
-        printf("Val2: %d\n", val_int2);
+        // printf("Val2: %d\n", val_int2);
     }
     else
     {
         shared_mem[tid + blockDim.x] = 0;
     }
 
+    __syncthreads(); // Synchronize to ensure all shared memory is loaded
+
     // Perform reduction in shared memory
     for (int stride = blockDim.x; stride > 0; stride /= 2)
     {
-        __syncthreads();
+        __syncthreads(); // Synchronize before accessing shared memory
         if (tid < stride)
         {
             shared_mem[tid] += shared_mem[tid + stride];
         }
     }
-    __syncthreads();
+
+    __syncthreads(); // Synchronize before writing the result back
 
     // Write the result back to global memory
     if (tid == 0)
     {
-        printf("shared mem[0]: %d\n", shared_mem[0]);
+        // printf("shared mem[0]: %d\n", shared_mem[0]);
         atomicAdd(&output->value, shared_mem[0]);
-        // copy key to output key
-        for (int i = 0; i < MAX_WORD_SIZE; i++)
+
+        // Ensure output key is set only once correctly
+        if (blockIdx.x == 0)
         {
-            output->key[i] = pairs->key[i];
+            for (int i = 0; i < MAX_WORD_SIZE; i++)
+            {
+                output->key[i] = pairs->key[i];
+            }
         }
-        printf("Output key: %s\n", output->key);
-        printf("Output value: %d\n", output->value);
+
+        // printf("Output key: %s\n", output->key);
+        // printf("Output value: %d\n", output->value);
     }
 }
 
