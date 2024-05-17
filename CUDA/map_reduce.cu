@@ -258,6 +258,7 @@ void runPipeline(input_type *input, output_type *&output)
 
     MyPair *host_pairs;
     cudaMallocHost(&host_pairs, NUM_INPUT * sizeof(MyPair));
+    // host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
 
     cudaEventRecord(startGPU);
     for (int iter = 0; iter < ITERATIONS; iter++)
@@ -274,13 +275,10 @@ void runPipeline(input_type *input, output_type *&output)
             int *segment_input_size_d;
             if (iter == 0)
             {
-                // size_t input_size = NUM_INPUT * sizeof(input_type);
-                //  size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
-                //  size_t output_size = NUM_OUTPUT * sizeof(output_type);
-                cudaMemcpyAsync(&dev_input[start], &input[start], segment_input_size * sizeof(input_type), cudaMemcpyHostToDevice, streams[s]);
                 // Copy the size of the segment to device
                 cudaMallocAsync(&segment_input_size_d, sizeof(int), streams[s]);
                 cudaMemcpyAsync(segment_input_size_d, &segment_input_size, sizeof(int), cudaMemcpyHostToDevice, streams[s]);
+                cudaMemcpyAsync(&dev_input[start], &input[start], segment_input_size * sizeof(input_type), cudaMemcpyHostToDevice, streams[s]);
             }
 
             // ================== MAP ==================
@@ -290,9 +288,9 @@ void runPipeline(input_type *input, output_type *&output)
             mapGPUTime += temp;
             iterationTime += temp;
         }
+        cudaDeviceSynchronize();
         // ================== SORT ==================
         // std::cout << "Start Sort" << std::endl;
-        // host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
         temp = sort(host_pairs, dev_pairs);
@@ -462,7 +460,7 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice = 2; // init with merge sort
+    int choice = 1; // init with merge sort
     // std::cout << "\nSelect the type of sort:";
     // std::cout << "\n\t1. Merge Sort";
     // std::cout << "\n\t2. Bitonic Sort";

@@ -1,6 +1,6 @@
 nvcc -O3 -dc map_reduce.cu
 nvcc -O3 -o kmeans map_reduce.obj
-kmeans ../data/Kmeans/s1_2_17.txt
+kmeans ../data/Kmeans/s1_2_15.txt
 kmeans ../data/WordCount/word_count_input1.txt
 ====================================
 nvcc -O3 -dc map_reduce_old.cu
