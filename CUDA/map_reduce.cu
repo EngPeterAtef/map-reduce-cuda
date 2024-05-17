@@ -8,8 +8,8 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include <cmath>
-#include "kmeans.cuh"
-// #include "wordcount.cuh"
+// #include "kmeans.cuh"
+#include "wordcount.cuh"
 #define MAX_THREADS_PER_BLOCK 1024
 
 using millis = std::chrono::milliseconds;
@@ -163,7 +163,7 @@ float runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_
     cudaEventCreate(&stopGPU);
     float millisecondsGPU = 0;
     cudaEventRecord(startGPU);
-    reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
+    reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE, 2 * REDUCE_BLOCK_SIZE * sizeof(MyOutputValue)>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
     cudaDeviceSynchronize();
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess)
@@ -346,10 +346,14 @@ void runPipeline(input_type *input, output_type *&output)
                 REDUCE_GRID_SIZE = (ceil(shuffle_output_size / 2.0) + (REDUCE_BLOCK_SIZE)-1) / (REDUCE_BLOCK_SIZE);
                 // copy the shuffle output to device
                 ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
+                // std::cout << "before malloc Shuffle output size: " << shuffle_output_size << std::endl;
                 cudaMalloc(&dev_shuffle_output, sizeof(ShuffleAndSort_KeyPairOutput));
+                // std::cout << "before copy Shuffle output size: " << shuffle_output_size << std::endl;
                 cudaMemcpy(dev_shuffle_output, &host_shuffle_output[i], sizeof(ShuffleAndSort_KeyPairOutput), cudaMemcpyHostToDevice);
+                // std::cout << "after malloc Shuffle output size: " << shuffle_output_size << std::endl;
 
                 temp = runReduceKernel(dev_shuffle_output, &dev_output[i], TOTAL_PAIRS_D, NUM_OUTPUT_D);
+                std::cout << "after reduce: " << shuffle_output_size << std::endl;
                 std::cout << "\n\nIteration " << iter << " Reduce function GPU Time: " << temp << " ms" << std::endl;
                 reduceGPUTime += temp;
                 iterationTime += temp;
@@ -372,7 +376,7 @@ void runPipeline(input_type *input, output_type *&output)
         }
         // runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
         // free the memory
-        free(host_pairs);
+        // free(host_pairs);
     }
     // free the memory
     cudaDeviceSynchronize();
