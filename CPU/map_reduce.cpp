@@ -8,8 +8,8 @@
 #include <vector>
 #include <algorithm>
 
-#include "kmeans.hpp"
-// #include "wordcount.hpp"
+// #include "kmeans.hpp"
+#include "wordcount.hpp"
 
 void read_data(std::vector<input_type> &data, std::string filename)
 {
@@ -202,11 +202,11 @@ int main(int argc, char *argv[])
         auto t_after_map = std::chrono::steady_clock::now();
         if (k == 0)
         {
-            t_map = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_map - t_before_map).count();
+            t_map = std::chrono::duration_cast<std::chrono::microseconds>(t_after_map - t_before_map).count();
         }
         else
         {
-            t_map += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_map - t_before_map).count();
+            t_map += std::chrono::duration_cast<std::chrono::microseconds>(t_after_map - t_before_map).count();
         }
 
         // =================================================
@@ -223,11 +223,11 @@ int main(int argc, char *argv[])
         auto t_after_sort = std::chrono::steady_clock::now();
         if (k == 0)
         {
-            t_sort = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_sort - t_before_sort).count();
+            t_sort = std::chrono::duration_cast<std::chrono::microseconds>(t_after_sort - t_before_sort).count();
         }
         else
         {
-            t_sort += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_sort - t_before_sort).count();
+            t_sort += std::chrono::duration_cast<std::chrono::microseconds>(t_after_sort - t_before_sort).count();
         }
         // for (int i = 0; i < map_pairs.size(); i++)
         // {
@@ -258,11 +258,11 @@ int main(int argc, char *argv[])
         auto t_after_shuffle = std::chrono::steady_clock::now();
         if (k == 0)
         {
-            t_shuffle = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_shuffle - t_before_shuffle).count();
+            t_shuffle = std::chrono::duration_cast<std::chrono::microseconds>(t_after_shuffle - t_before_shuffle).count();
         }
         else
         {
-            t_shuffle += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_shuffle - t_before_shuffle).count();
+            t_shuffle += std::chrono::duration_cast<std::chrono::microseconds>(t_after_shuffle - t_before_shuffle).count();
         }
         // // Add the last pair to the output vector
         // shuffle_output.push_back(current_pair);
@@ -316,11 +316,11 @@ int main(int argc, char *argv[])
         auto t_after_reduce = std::chrono::steady_clock::now();
         if (k == 0)
         {
-            t_reduce = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_reduce - t_before_reduce).count();
+            t_reduce = std::chrono::duration_cast<std::chrono::microseconds>(t_after_reduce - t_before_reduce).count();
         }
         else
         {
-            t_reduce += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_reduce - t_before_reduce).count();
+            t_reduce += std::chrono::duration_cast<std::chrono::microseconds>(t_after_reduce - t_before_reduce).count();
         }
         delete shuffle_output;
 
@@ -352,10 +352,10 @@ int main(int argc, char *argv[])
     std::cout << "==========================================" << std::endl;
     std::cout << "Time taken to read data: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_after_read - t_before_read).count() << " ms" << std::endl;
     std::cout << "Time taken for map-reduce: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_final - t_after_read).count() << " ms" << std::endl;
-    std::cout << "Time taken for map: " << t_map << " ms" << std::endl;
-    std::cout << "Time taken for sort: " << t_sort << " ms" << std::endl;
-    std::cout << "Time taken for shuffle: " << t_shuffle << " ms" << std::endl;
-    std::cout << "Time taken for reduce: " << t_reduce << " ms" << std::endl;
+    std::cout << "Time taken for map: " << t_map << "us" << std::endl;
+    std::cout << "Time taken for sort: " << t_sort << "us" << std::endl;
+    std::cout << "Time taken for shuffle: " << t_shuffle << "us" << std::endl;
+    std::cout << "Time taken for reduce: " << t_reduce << "us" << std::endl;
     delete output;
     return 0;
 }

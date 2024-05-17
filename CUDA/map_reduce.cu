@@ -506,7 +506,7 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice = 2; // init with merge sort
+    int choice = 1; // init with merge sort
     // std::cout << "\nSelect the type of sort:";
     // std::cout << "\n\t1. Merge Sort";
     // std::cout << "\n\t2. Bitonic Sort";
