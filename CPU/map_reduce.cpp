@@ -143,6 +143,10 @@ int main(int argc, char *argv[])
     // =================================================
     // ============= Setup Multi-threading =============
     // =================================================
+    int64_t t_map;
+    int64_t t_sort;
+    int64_t t_shuffle;
+    int64_t t_reduce;
 
     for (int k = 0; k < ITERATIONS; k++)
     {
@@ -152,6 +156,7 @@ int main(int argc, char *argv[])
         // =================================================
         // ==================== Map ========================
         // =================================================
+        auto t_before_map = std::chrono::steady_clock::now();
 
         pthread_t mappers[map_num_threads];
         std::vector<MyPair> map_pairs(inputNum);
@@ -194,6 +199,15 @@ int main(int argc, char *argv[])
         // {
         //     std::cout << map_pairs[i];
         // }
+        auto t_after_map = std::chrono::steady_clock::now();
+        if (k == 0)
+        {
+            t_map = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_map - t_before_map).count();
+        }
+        else
+        {
+            t_map += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_map - t_before_map).count();
+        }
 
         // =================================================
         // ===================== Sort ======================
@@ -204,7 +218,17 @@ int main(int argc, char *argv[])
         //     std::cout << map_pairs[i] << std::endl;
         // }
         // std::cout << "Sorting pairs" << std::endl;
+        auto t_before_sort = std::chrono::steady_clock::now();
         sort(map_pairs.begin(), map_pairs.end(), PairCompare());
+        auto t_after_sort = std::chrono::steady_clock::now();
+        if (k == 0)
+        {
+            t_sort = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_sort - t_before_sort).count();
+        }
+        else
+        {
+            t_sort += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_sort - t_before_sort).count();
+        }
         // for (int i = 0; i < map_pairs.size(); i++)
         // {
         //     std::cout << map_pairs[i] << std::endl;
@@ -215,6 +239,7 @@ int main(int argc, char *argv[])
         // =================================================
         // std::cout << "==========================================" << std::endl;
         // std::cout << "Combining unique values" << std::endl;
+        auto t_before_shuffle = std::chrono::steady_clock::now();
         std::vector<ShuffleAndSort_KeyPairOutput> *shuffle_output = new std::vector<ShuffleAndSort_KeyPairOutput>;
         for (int i = 0; i < inputNum; i++)
         {
@@ -230,6 +255,15 @@ int main(int argc, char *argv[])
                 shuffle_output->back().values.push_back(map_pairs[i].value);
             }
         }
+        auto t_after_shuffle = std::chrono::steady_clock::now();
+        if (k == 0)
+        {
+            t_shuffle = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_shuffle - t_before_shuffle).count();
+        }
+        else
+        {
+            t_shuffle += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_shuffle - t_before_shuffle).count();
+        }
         // // Add the last pair to the output vector
         // shuffle_output.push_back(current_pair);
         // print pairs
@@ -243,6 +277,7 @@ int main(int argc, char *argv[])
         // =================== Reduce ======================
         // =================================================
         // std::cout << "==========================================" << std::endl;
+        auto t_before_reduce = std::chrono::steady_clock::now();
         if (reduce_num_threads > (int)shuffle_output->size())
         {
             reduce_num_threads = (int)shuffle_output->size();
@@ -278,6 +313,15 @@ int main(int argc, char *argv[])
 
             // std::cout << "Reducer " << i << " finished" << std::endl;
         }
+        auto t_after_reduce = std::chrono::steady_clock::now();
+        if (k == 0)
+        {
+            t_reduce = std::chrono::duration_cast<std::chrono::milliseconds>(t_after_reduce - t_before_reduce).count();
+        }
+        else
+        {
+            t_reduce += std::chrono::duration_cast<std::chrono::milliseconds>(t_after_reduce - t_before_reduce).count();
+        }
         delete shuffle_output;
 
         // std::cout << "Reducing done" << std::endl;
@@ -308,6 +352,10 @@ int main(int argc, char *argv[])
     std::cout << "==========================================" << std::endl;
     std::cout << "Time taken to read data: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_after_read - t_before_read).count() << " ms" << std::endl;
     std::cout << "Time taken for map-reduce: " << std::chrono::duration_cast<std::chrono::milliseconds>(t_final - t_after_read).count() << " ms" << std::endl;
+    std::cout << "Time taken for map: " << t_map << " ms" << std::endl;
+    std::cout << "Time taken for sort: " << t_sort << " ms" << std::endl;
+    std::cout << "Time taken for shuffle: " << t_shuffle << " ms" << std::endl;
+    std::cout << "Time taken for reduce: " << t_reduce << " ms" << std::endl;
     delete output;
     return 0;
 }

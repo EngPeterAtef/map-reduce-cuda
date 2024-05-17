@@ -88,11 +88,13 @@ int main(int argc, char *argv[])
     auto time1 = duration_cast<millis>(t_seq_2 - t_seq_1).count();
     auto time2 = duration_cast<millis>(t_seq_3 - t_seq_2).count();
     auto total_time = duration_cast<millis>(t_seq_3 - t_seq_1).count();
+    // auto combiner_time = duration_cast<millis>(t_seq_5 - t_seq_4).count();
     std::cout << "========================================" << "\n";
     std::cout << "================Timings=================" << "\n";
     std::cout << "========================================" << "\n";
     std::cout << "Time for CPU data loading + initialize: " << time1 << " milliseconds\n";
     std::cout << "Time for map reduce KMeans + writing outputs + free: " << time2 << " milliseconds\n";
+
     std::cout << "Total time: " << total_time << " milliseconds\n";
 
     return 0;
@@ -259,6 +261,7 @@ void runPipeline(input_type *input, output_type *&output)
     MyPair *host_pairs;
     cudaMallocHost(&host_pairs, NUM_INPUT * sizeof(MyPair));
     // host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
+    int64_t t_seq_combine;
 
     cudaEventRecord(startGPU);
     for (int iter = 0; iter < ITERATIONS; iter++)
@@ -303,9 +306,15 @@ void runPipeline(input_type *input, output_type *&output)
         // }
         // std::cout << std::endl;
         // ============= Combine unique keys =============
+        auto t_seq_4 = steady_clock::now();
         ShuffleAndSort_KeyPairOutput *dev_shuffle_output;
         int output_size;
         combineUniqueKeys(host_pairs, dev_shuffle_output, output_size);
+        auto t_seq_5 = steady_clock::now();
+        if (iter == 0)
+            t_seq_combine = duration_cast<millis>(t_seq_5 - t_seq_4).count();
+        else
+            t_seq_combine += duration_cast<millis>(t_seq_5 - t_seq_4).count();
 
         // print shuffle output
         // for (int i = 0; i < shuffle_output->size(); i++)
@@ -359,6 +368,8 @@ void runPipeline(input_type *input, output_type *&output)
     std::cout << "\n\nTotal Sort GPU Time: " << sortGPUTime << " ms" << std::endl;
     std::cout << "\n\nTotal Reduce GPU Time: " << reduceGPUTime << " ms" << std::endl;
     std::cout << "\n\nTotal GPU Time: " << millisecondsGPU << " ms" << std::endl;
+    std::cout << "Time for combine unique keys: " << t_seq_combine << " milliseconds\n";
+    // printf("Time for combine unique keys: %f ms\n", t_seq_combine);
 }
 
 // ===============================================================
@@ -460,7 +471,7 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice = 1; // init with merge sort
+    int choice = 2; // init with merge sort
     // std::cout << "\nSelect the type of sort:";
     // std::cout << "\n\t1. Merge Sort";
     // std::cout << "\n\t2. Bitonic Sort";
