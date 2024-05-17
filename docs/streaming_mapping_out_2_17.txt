@@ -1,0 +1,344 @@
+========================================
+============Device Properties===========
+========================================
+Device Name: NVIDIA GeForce RTX 4060 Laptop GPU
+Total Global Memory: 8585216000 bytes
+Shared Memory Per Block: 49152 bytes
+Warp Size: 32
+Max Threads Per Block: 1024
+Max Threads Dim: (1024, 1024, 64)
+Max Grid Size: (2147483647, 65535, 65535)
+Multiprocessor Count: 24
+Clock Rate: 2010000 kHz
+Compute Capability: 8.9
+========================================
+===========Map GPU Parameters===========
+========================================
+Block Size: 512
+Grid Size: 256
+========================================
+===========Reduce GPU Parameters========
+========================================
+Block Size: 32
+Grid Size: 2
+========================================
+Number of input elements: 131072
+Number of pairs per input element: 1
+Total number of pairs: 131072
+Running Initialization...
+Running Map-Reduce for 2 iterations...
+Segment size: 4096
+Iteration: 0
+Stream: 0 Start: 0 End: 4096 Segment size: 4096
+
+
+Iteration:0 Stream:0 Map function GPU Time: 178.283 ms
+Stream: 1 Start: 4096 End: 8192 Segment size: 4096
+
+
+Iteration:0 Stream:1 Map function GPU Time: 0.201728 ms
+Stream: 2 Start: 8192 End: 12288 Segment size: 4096
+
+
+Iteration:0 Stream:2 Map function GPU Time: 0.275456 ms
+Stream: 3 Start: 12288 End: 16384 Segment size: 4096
+
+
+Iteration:0 Stream:3 Map function GPU Time: 0.176128 ms
+Stream: 4 Start: 16384 End: 20480 Segment size: 4096
+
+
+Iteration:0 Stream:4 Map function GPU Time: 0.231424 ms
+Stream: 5 Start: 20480 End: 24576 Segment size: 4096
+
+
+Iteration:0 Stream:5 Map function GPU Time: 0.218048 ms
+Stream: 6 Start: 24576 End: 28672 Segment size: 4096
+
+
+Iteration:0 Stream:6 Map function GPU Time: 0.289792 ms
+Stream: 7 Start: 28672 End: 32768 Segment size: 4096
+
+
+Iteration:0 Stream:7 Map function GPU Time: 0.30208 ms
+Stream: 8 Start: 32768 End: 36864 Segment size: 4096
+
+
+Iteration:0 Stream:8 Map function GPU Time: 0.205792 ms
+Stream: 9 Start: 36864 End: 40960 Segment size: 4096
+
+
+Iteration:0 Stream:9 Map function GPU Time: 0.258048 ms
+Stream: 10 Start: 40960 End: 45056 Segment size: 4096
+
+
+Iteration:0 Stream:10 Map function GPU Time: 0.187392 ms
+Stream: 11 Start: 45056 End: 49152 Segment size: 4096
+
+
+Iteration:0 Stream:11 Map function GPU Time: 0.294912 ms
+Stream: 12 Start: 49152 End: 53248 Segment size: 4096
+
+
+Iteration:0 Stream:12 Map function GPU Time: 0.186368 ms
+Stream: 13 Start: 53248 End: 57344 Segment size: 4096
+
+
+Iteration:0 Stream:13 Map function GPU Time: 0.27136 ms
+Stream: 14 Start: 57344 End: 61440 Segment size: 4096
+
+
+Iteration:0 Stream:14 Map function GPU Time: 0.2816 ms
+Stream: 15 Start: 61440 End: 65536 Segment size: 4096
+
+
+Iteration:0 Stream:15 Map function GPU Time: 0.288768 ms
+Stream: 16 Start: 65536 End: 69632 Segment size: 4096
+
+
+Iteration:0 Stream:16 Map function GPU Time: 0.218112 ms
+Stream: 17 Start: 69632 End: 73728 Segment size: 4096
+
+
+Iteration:0 Stream:17 Map function GPU Time: 0.207872 ms
+Stream: 18 Start: 73728 End: 77824 Segment size: 4096
+
+
+Iteration:0 Stream:18 Map function GPU Time: 0.233472 ms
+Stream: 19 Start: 77824 End: 81920 Segment size: 4096
+
+
+Iteration:0 Stream:19 Map function GPU Time: 0.198656 ms
+Stream: 20 Start: 81920 End: 86016 Segment size: 4096
+
+
+Iteration:0 Stream:20 Map function GPU Time: 0.259072 ms
+Stream: 21 Start: 86016 End: 90112 Segment size: 4096
+
+
+Iteration:0 Stream:21 Map function GPU Time: 0.190464 ms
+Stream: 22 Start: 90112 End: 94208 Segment size: 4096
+
+
+Iteration:0 Stream:22 Map function GPU Time: 0.298016 ms
+Stream: 23 Start: 94208 End: 98304 Segment size: 4096
+
+
+Iteration:0 Stream:23 Map function GPU Time: 0.26624 ms
+Stream: 24 Start: 98304 End: 102400 Segment size: 4096
+
+
+Iteration:0 Stream:24 Map function GPU Time: 0.20992 ms
+Stream: 25 Start: 102400 End: 106496 Segment size: 4096
+
+
+Iteration:0 Stream:25 Map function GPU Time: 0.231424 ms
+Stream: 26 Start: 106496 End: 110592 Segment size: 4096
+
+
+Iteration:0 Stream:26 Map function GPU Time: 0.333696 ms
+Stream: 27 Start: 110592 End: 114688 Segment size: 4096
+
+
+Iteration:0 Stream:27 Map function GPU Time: 0.229376 ms
+Stream: 28 Start: 114688 End: 118784 Segment size: 4096
+
+
+Iteration:0 Stream:28 Map function GPU Time: 0.179232 ms
+Stream: 29 Start: 118784 End: 122880 Segment size: 4096
+
+
+Iteration:0 Stream:29 Map function GPU Time: 0.31232 ms
+Stream: 30 Start: 122880 End: 126976 Segment size: 4096
+
+
+Iteration:0 Stream:30 Map function GPU Time: 0.253952 ms
+Stream: 31 Start: 126976 End: 131072 Segment size: 4096
+
+
+Iteration:0 Stream:31 Map function GPU Time: 0.288768 ms
+
+--------------------------------------------------------------
+BITONIC SORT SELECTED
+--------------------------------------------------------------
+
+Sorted GPU array:
+
+SORT CHECKER RUNNING - SUCCESFULLY SORTED GPU ARRAY
+
+
+Iteration:0 Sort function GPU Time: 5.27872 ms
+
+
+Iteration 0 Reduce function GPU Time: 4.17821 ms
+
+
+Iteration 0 Total GPU Time: 195.319 ms
+Iteration: 1
+Stream: 0 Start: 0 End: 4096 Segment size: 4096
+
+
+Iteration:1 Stream:0 Map function GPU Time: 0.625856 ms
+Stream: 1 Start: 4096 End: 8192 Segment size: 4096
+
+
+Iteration:1 Stream:1 Map function GPU Time: 0.260096 ms
+Stream: 2 Start: 8192 End: 12288 Segment size: 4096
+
+
+Iteration:1 Stream:2 Map function GPU Time: 0.21504 ms
+Stream: 3 Start: 12288 End: 16384 Segment size: 4096
+
+
+Iteration:1 Stream:3 Map function GPU Time: 0.232448 ms
+Stream: 4 Start: 16384 End: 20480 Segment size: 4096
+
+
+Iteration:1 Stream:4 Map function GPU Time: 0.21504 ms
+Stream: 5 Start: 20480 End: 24576 Segment size: 4096
+
+
+Iteration:1 Stream:5 Map function GPU Time: 0.232448 ms
+Stream: 6 Start: 24576 End: 28672 Segment size: 4096
+
+
+Iteration:1 Stream:6 Map function GPU Time: 0.198656 ms
+Stream: 7 Start: 28672 End: 32768 Segment size: 4096
+
+
+Iteration:1 Stream:7 Map function GPU Time: 0.232448 ms
+Stream: 8 Start: 32768 End: 36864 Segment size: 4096
+
+
+Iteration:1 Stream:8 Map function GPU Time: 0.293888 ms
+Stream: 9 Start: 36864 End: 40960 Segment size: 4096
+
+
+Iteration:1 Stream:9 Map function GPU Time: 0.29184 ms
+Stream: 10 Start: 40960 End: 45056 Segment size: 4096
+
+
+Iteration:1 Stream:10 Map function GPU Time: 0.236544 ms
+Stream: 11 Start: 45056 End: 49152 Segment size: 4096
+
+
+Iteration:1 Stream:11 Map function GPU Time: 0.231424 ms
+Stream: 12 Start: 49152 End: 53248 Segment size: 4096
+
+
+Iteration:1 Stream:12 Map function GPU Time: 0.237728 ms
+Stream: 13 Start: 53248 End: 57344 Segment size: 4096
+
+
+Iteration:1 Stream:13 Map function GPU Time: 0.229376 ms
+Stream: 14 Start: 57344 End: 61440 Segment size: 4096
+
+
+Iteration:1 Stream:14 Map function GPU Time: 0.516192 ms
+Stream: 15 Start: 61440 End: 65536 Segment size: 4096
+
+
+Iteration:1 Stream:15 Map function GPU Time: 0.215136 ms
+Stream: 16 Start: 65536 End: 69632 Segment size: 4096
+
+
+Iteration:1 Stream:16 Map function GPU Time: 0.219136 ms
+Stream: 17 Start: 69632 End: 73728 Segment size: 4096
+
+
+Iteration:1 Stream:17 Map function GPU Time: 0.187392 ms
+Stream: 18 Start: 73728 End: 77824 Segment size: 4096
+
+
+Iteration:1 Stream:18 Map function GPU Time: 0.274432 ms
+Stream: 19 Start: 77824 End: 81920 Segment size: 4096
+
+
+Iteration:1 Stream:19 Map function GPU Time: 0.316416 ms
+Stream: 20 Start: 81920 End: 86016 Segment size: 4096
+
+
+Iteration:1 Stream:20 Map function GPU Time: 0.463872 ms
+Stream: 21 Start: 86016 End: 90112 Segment size: 4096
+
+
+Iteration:1 Stream:21 Map function GPU Time: 0.190464 ms
+Stream: 22 Start: 90112 End: 94208 Segment size: 4096
+
+
+Iteration:1 Stream:22 Map function GPU Time: 0.206848 ms
+Stream: 23 Start: 94208 End: 98304 Segment size: 4096
+
+
+Iteration:1 Stream:23 Map function GPU Time: 0.186368 ms
+Stream: 24 Start: 98304 End: 102400 Segment size: 4096
+
+
+Iteration:1 Stream:24 Map function GPU Time: 0.211072 ms
+Stream: 25 Start: 102400 End: 106496 Segment size: 4096
+
+
+Iteration:1 Stream:25 Map function GPU Time: 0.19456 ms
+Stream: 26 Start: 106496 End: 110592 Segment size: 4096
+
+
+Iteration:1 Stream:26 Map function GPU Time: 0.200704 ms
+Stream: 27 Start: 110592 End: 114688 Segment size: 4096
+
+
+Iteration:1 Stream:27 Map function GPU Time: 0.202624 ms
+Stream: 28 Start: 114688 End: 118784 Segment size: 4096
+
+
+Iteration:1 Stream:28 Map function GPU Time: 0.231424 ms
+Stream: 29 Start: 118784 End: 122880 Segment size: 4096
+
+
+Iteration:1 Stream:29 Map function GPU Time: 0.206848 ms
+Stream: 30 Start: 122880 End: 126976 Segment size: 4096
+
+
+Iteration:1 Stream:30 Map function GPU Time: 0.222368 ms
+Stream: 31 Start: 126976 End: 131072 Segment size: 4096
+
+
+Iteration:1 Stream:31 Map function GPU Time: 0.206848 ms
+
+--------------------------------------------------------------
+BITONIC SORT SELECTED
+--------------------------------------------------------------
+
+Sorted GPU array:
+
+SORT CHECKER RUNNING - SUCCESFULLY SORTED GPU ARRAY
+
+
+Iteration:1 Sort function GPU Time: 4.96026 ms
+
+
+Iteration 1 Reduce function GPU Time: 2.90963 ms
+
+
+Iteration 1 Total GPU Time: 16.0554 ms
+
+
+Total Map GPU Time: 194.048 ms
+
+
+Total Sort GPU Time: 10.239 ms
+
+
+Total Reduce GPU Time: 7.08784 ms
+
+
+Total GPU Time: 446.876 ms
+Number of output elements: 50
+========================================
+==============Final Output==============
+========================================
+========================================
+================Timings=================
+========================================
+Time for CPU data loading + initialize: 114 milliseconds
+Time for map reduce KMeans + writing outputs + free: 542 milliseconds
+Total time: 657 milliseconds

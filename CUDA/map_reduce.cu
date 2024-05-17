@@ -7,8 +7,8 @@
 #include <string>
 #include <cuda_runtime.h>
 #include <vector>
-// #include "kmeans.cuh"
-#include "wordcount.cuh"
+#include "kmeans.cuh"
+// #include "wordcount.cuh"
 #define MAX_THREADS_PER_BLOCK 1024
 
 using millis = std::chrono::milliseconds;
@@ -72,11 +72,11 @@ int main(int argc, char *argv[])
     std::cout << "==============Final Output==============" << "\n";
     std::cout << "========================================" << "\n";
     // Iterate through the output array
-    for (int i = 0; i < NUM_OUTPUT; i++)
-    {
-        std::cout << output[i];
-        std::cout << std::endl;
-    }
+    // for (int i = 0; i < NUM_OUTPUT; i++)
+    // {
+    //     std::cout << output[i];
+    //     std::cout << std::endl;
+    // }
 
     saveData(output, filename);
     // Free host memory
@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
 // ===============================================================================
 // ===============================================================================
 
-__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D, int *NUM_OUTPUT_D)
+__global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *dev_output, int *NUM_INPUT_D, int *NUM_OUTPUT_D)
 {
     size_t threadId = blockIdx.x * blockDim.x + threadIdx.x; // Global id of the thread
     // // Total number of threads, by jumping this much, it ensures that no thread gets the same data
@@ -122,7 +122,7 @@ __global__ void mapKernel(const input_type *input, MyPair *pairs, output_type *d
     }
 }
 
-float runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, unsigned long long *NUM_INPUT_D, int *NUM_OUTPUT_D)
+float runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *dev_output, int *NUM_INPUT_D, int *NUM_OUTPUT_D, cudaStream_t stream)
 {
     // Perform GPU merge sort and measure time
     cudaEvent_t startGPU, stopGPU;
@@ -131,8 +131,8 @@ float runMapKernel(const input_type *dev_input, MyPair *dev_pairs, output_type *
     float millisecondsGPU = 0;
     cudaEventRecord(startGPU);
 
-    mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
-    cudaDeviceSynchronize();
+    mapKernel<<<MAP_GRID_SIZE, MAP_BLOCK_SIZE, 0, stream>>>(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
+    // cudaDeviceSynchronize();
     cudaEventRecord(stopGPU);
     // Calculate Elapsed GPU time
     cudaEventSynchronize(stopGPU);
@@ -172,7 +172,7 @@ float runReduceKernel(ShuffleAndSort_KeyPairOutput *dev_pairs, output_type *dev_
     float millisecondsGPU = 0;
     cudaEventRecord(startGPU);
     reduceKernel<<<REDUCE_GRID_SIZE, REDUCE_BLOCK_SIZE>>>(dev_pairs, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize();
     cudaEventRecord(stopGPU);
     // Calculate Elapsed GPU time
     cudaEventSynchronize(stopGPU);
@@ -199,34 +199,34 @@ void runPipeline(input_type *input, output_type *&output)
 {
     unsigned long long *NUM_INPUT_D;
     unsigned long long *TOTAL_PAIRS_D;
-    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
-    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
-    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
-    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
     int *NUM_OUTPUT_D;
+    cudaMalloc(&NUM_INPUT_D, sizeof(unsigned long long));
+    cudaMalloc(&TOTAL_PAIRS_D, sizeof(unsigned long long));
     cudaMalloc(&NUM_OUTPUT_D, sizeof(int));
-    cudaMemcpy(NUM_OUTPUT_D, &NUM_OUTPUT, sizeof(int), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
 
+    cudaMemcpy(NUM_INPUT_D, &NUM_INPUT, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMemcpy(TOTAL_PAIRS_D, &TOTAL_PAIRS, sizeof(unsigned long long), cudaMemcpyHostToDevice);
+    cudaMemcpy(NUM_OUTPUT_D, &NUM_OUTPUT, sizeof(int), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
+
+    size_t input_size = NUM_INPUT * sizeof(input_type);
+    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
+    size_t output_size = NUM_OUTPUT * sizeof(output_type);
     // Pointers for input, key-value pairs & output on device
     input_type *dev_input;
     output_type *dev_output;
     MyPair *dev_pairs;
 
     // Allocate memory on GPU for input
-    size_t input_size = NUM_INPUT * sizeof(input_type);
     cudaMalloc(&dev_input, input_size);
-
     // Allocate memory for key-value pairs
-    size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
     cudaMalloc(&dev_pairs, pair_size);
-
     // Allocate memory for outputs
     // Since centroids are needed in K Means the entire time
-    size_t output_size = NUM_OUTPUT * sizeof(output_type);
     cudaMalloc(&dev_output, output_size);
-
-    cudaMemcpy(dev_input, input, input_size, cudaMemcpyHostToDevice);
-
+    // Copy initial centroids to device
+    cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
     // copy dev_input to host again to print
     // std::cout << "Printing input from dev" << std::endl;
     // input_type *host_input;
@@ -237,29 +237,68 @@ void runPipeline(input_type *input, output_type *&output)
     //     std::cout << host_input[i];
     //     std::cout << std::endl;
     // }
-
-    // Copy initial centroids to device
-    cudaMemcpy(dev_output, output, output_size, cudaMemcpyHostToDevice);
+    // Perform GPU merge sort and measure time
+    cudaEvent_t startGPU, stopGPU;
+    cudaEventCreate(&startGPU);
+    cudaEventCreate(&stopGPU);
+    float millisecondsGPU = 0;
+    // =================STREAMING=================
+    const int numberOfStreams = 32;
+    cudaStream_t streams[numberOfStreams];
+    for (int i = 0; i < numberOfStreams; i++)
+    {
+        cudaStreamCreate(&streams[i]);
+    }
+    // ==========================================
+    // divide the data into segments
+    int segment_size = (NUM_INPUT + numberOfStreams - 1) / numberOfStreams; // ceil
+    std::cout << "Segment size: " << segment_size << std::endl;
+    // Now run the algorithm for the specified iterations
     float mapGPUTime = 0, reduceGPUTime = 0, sortGPUTime = 0;
-    // Now run K Means for the specified iterations
+
+    MyPair *host_pairs;
+    cudaMallocHost(&host_pairs, NUM_INPUT * sizeof(MyPair));
+
+    cudaEventRecord(startGPU);
     for (int iter = 0; iter < ITERATIONS; iter++)
     {
-        MyPair *host_pairs;
-        // ================== MAP ==================
-        // TODO: USE STREAMING
         float temp = 0;
-        temp = runMapKernel(dev_input, dev_pairs, dev_output, NUM_INPUT_D, NUM_OUTPUT_D);
-        // Print the time of the runs
-        std::cout << "\n\nIteration " << iter << "Map function GPU Time: " << temp << " ms" << std::endl;
-        mapGPUTime += temp;
+        float iterationTime = 0;
+        std::cout << "Iteration: " << iter << std::endl;
+        for (int s = 0; s < numberOfStreams; s++)
+        {
+            int start = s * segment_size;
+            int end = (start + segment_size) < NUM_INPUT ? (start + segment_size) : NUM_INPUT;
+            int segment_input_size = end - start;
+            std::cout << "Stream: " << s << " Start: " << start << " End: " << end << " Segment size: " << segment_input_size << std::endl;
+            int *segment_input_size_d;
+            if (iter == 0)
+            {
+                // size_t input_size = NUM_INPUT * sizeof(input_type);
+                //  size_t pair_size = TOTAL_PAIRS * sizeof(MyPair);
+                //  size_t output_size = NUM_OUTPUT * sizeof(output_type);
+                cudaMemcpyAsync(&dev_input[start], &input[start], segment_input_size * sizeof(input_type), cudaMemcpyHostToDevice, streams[s]);
+                // Copy the size of the segment to device
+                cudaMallocAsync(&segment_input_size_d, sizeof(int), streams[s]);
+                cudaMemcpyAsync(segment_input_size_d, &segment_input_size, sizeof(int), cudaMemcpyHostToDevice, streams[s]);
+            }
+
+            // ================== MAP ==================
+            temp = runMapKernel(&dev_input[start], &dev_pairs[start], dev_output, segment_input_size_d, NUM_OUTPUT_D, streams[s]);
+            // Print the time of the runs
+            std::cout << "\n\nIteration:" << iter << " Stream:" << s << " Map function GPU Time: " << temp << " ms" << std::endl;
+            mapGPUTime += temp;
+            iterationTime += temp;
+        }
         // ================== SORT ==================
-        std::cout << "Start Sort" << std::endl;
-        host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
+        // std::cout << "Start Sort" << std::endl;
+        // host_pairs = (MyPair *)malloc(NUM_INPUT * sizeof(MyPair));
         // thrust::sort(thrust::device, dev_pairs, dev_pairs + TOTAL_PAIRS, PairCompare());
         // cudaMemcpy(host_pairs, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToHost);
         temp = sort(host_pairs, dev_pairs);
-        std::cout << "\n\nIteration " << iter << "Sort function GPU Time: " << temp << " ms" << std::endl;
+        std::cout << "\n\nIteration:" << iter << " Sort function GPU Time: " << temp << " ms" << std::endl;
         sortGPUTime += temp;
+        iterationTime += temp;
         // for (int i = 0; i < TOTAL_PAIRS; i++)
         // {
         //     std::cout << host_pairs[i];
@@ -292,16 +331,24 @@ void runPipeline(input_type *input, output_type *&output)
 
         // ================== REDUCE ==================
         temp = runReduceKernel(dev_shuffle_output, dev_output, TOTAL_PAIRS_D, NUM_OUTPUT_D);
-        std::cout << "\n\nIteration " << iter << "Reduce function GPU Time: " << temp << " ms" << std::endl;
+        std::cout << "\n\nIteration " << iter << " Reduce function GPU Time: " << temp << " ms" << std::endl;
         reduceGPUTime += temp;
-        // free the memory
-        free(host_pairs);
+        iterationTime += temp;
         cudaFree(dev_shuffle_output);
+        // print the time of the iteration
+        std::cout << "\n\nIteration " << iter << " Total GPU Time: " << iterationTime << " ms" << std::endl;
     }
+    // free the memory
+    cudaDeviceSynchronize();
+    cudaEventRecord(stopGPU);
+    // Calculate Elapsed GPU time
+    cudaEventSynchronize(stopGPU);
+    cudaEventElapsedTime(&millisecondsGPU, startGPU, stopGPU);
     // Copy outputs from GPU to host
     cudaMemcpy(output, dev_output, NUM_OUTPUT * sizeof(output_type), cudaMemcpyDeviceToHost);
 
     // Free all memory allocated on GPU
+    cudaFreeHost(host_pairs);
     cudaFree(dev_input);
     cudaFree(dev_pairs);
     cudaFree(dev_output);
@@ -313,6 +360,7 @@ void runPipeline(input_type *input, output_type *&output)
     std::cout << "\n\nTotal Map GPU Time: " << mapGPUTime << " ms" << std::endl;
     std::cout << "\n\nTotal Sort GPU Time: " << sortGPUTime << " ms" << std::endl;
     std::cout << "\n\nTotal Reduce GPU Time: " << reduceGPUTime << " ms" << std::endl;
+    std::cout << "\n\nTotal GPU Time: " << millisecondsGPU << " ms" << std::endl;
 }
 
 // ===============================================================
@@ -414,23 +462,23 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaMemcpy(gpuArrmerge, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
     cudaMemcpy(gpuArrbiton, dev_pairs, NUM_INPUT * sizeof(MyPair), cudaMemcpyDeviceToDevice);
 
-    int choice;
-    std::cout << "\nSelect the type of sort:";
-    std::cout << "\n\t1. Merge Sort";
-    std::cout << "\n\t2. Bitonic Sort";
-    std::cout << "\nEnter your choice: ";
-    std::cin >> choice;
-    if (choice < 1 || choice > 2)
-    {
-        while (choice != 1 || choice != 2)
-        {
-            std::cout << "\n!!!!! WRONG CHOICE. TRY AGAIN. YOU HAVE ONLY 2 DISTINCT OPTIONS-\n";
-            std::cin >> choice;
+    int choice = 2; // init with merge sort
+    // std::cout << "\nSelect the type of sort:";
+    // std::cout << "\n\t1. Merge Sort";
+    // std::cout << "\n\t2. Bitonic Sort";
+    // std::cout << "\nEnter your choice: ";
+    // std::cin >> choice;
+    // if (choice < 1 || choice > 2)
+    // {
+    //     while (choice != 1 || choice != 2)
+    //     {
+    //         std::cout << "\n!!!!! WRONG CHOICE. TRY AGAIN. YOU HAVE ONLY 2 DISTINCT OPTIONS-\n";
+    //         std::cin >> choice;
 
-            if (choice == 1 || choice == 2)
-                break;
-        }
-    }
+    //         if (choice == 1 || choice == 2)
+    //             break;
+    //     }
+    // }
 
     if (choice == 1)
     {
@@ -496,6 +544,7 @@ float sort(MyPair *host_pairs, MyPair *dev_pairs)
     cudaFree(gpuTemp);
     return millisecondsGPU;
 }
+
 // ===============================================================
 // ====================COMBINE UNIQUE KEYS========================
 // ===============================================================

@@ -1,5 +1,6 @@
 #ifndef MAP_REDUCE_CUH
 #define MAP_REDUCE_CUH
+#include <iostream>
 
 // GPU parameters
 const int MAP_BLOCK_SIZE = 512;
