@@ -4,7 +4,7 @@
 
 // GPU parameters
 const int MAP_BLOCK_SIZE = 512;
-int REDUCE_BLOCK_SIZE = 8;
+int REDUCE_BLOCK_SIZE = 256;
 int MAP_GRID_SIZE;
 int REDUCE_GRID_SIZE;
 const bool USE_REDUCTION = true;
