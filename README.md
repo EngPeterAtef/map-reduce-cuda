@@ -5,6 +5,10 @@
 
 ### 1. CUDA
 
+
+```bash
+cd ./CUDA/
+```
 1. include your desired configuration in the map_reduce.cu  
 for wordcount, include the following line:
 ```c
@@ -53,6 +57,9 @@ kmeans
 
 ### 2. CPU
 
+```bash
+cd ./CPU/
+```
 1. include your desired configuration in the map_reduce.cpp  
 for wordcount, include the following line:
 ```c
