@@ -6,22 +6,35 @@
 // GPU parameters
 const int MAP_BLOCK_SIZE = 512;
 int REDUCE_BLOCK_SIZE = 32;
+// will be calculated automatically
 int MAP_GRID_SIZE;
 int REDUCE_GRID_SIZE;
+/**
+We implemented 2 modes of operation:
+1. USE_REDUCTION = false
+    Assigning each thread to process one output element.
+2. USE_REDUCTION = true
+    Applying a parallel reduction kernel for each key.
+*/
 const bool USE_REDUCTION = false;
 
-// No. of input elements (Lines in text file)
+// No. of input lines
+// will be calculated automatically
 unsigned long long NUM_INPUT;
 // No. of pairs per input element
 const int NUM_PAIRS = 1;
-// Total No. of output values (K - No. of clusters)
+// (K - No. of clusters)
+// 0 means it will be calculated by the program based on the number of unique keys
 int NUM_OUTPUT = 50;
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
 // No. of iterations
 const int ITERATIONS = 2;
+// Maximum word size
 const int MAX_WORD_SIZE = 10;
+// Maximum input size
+// this value is set to make a limit for the number of values that may go to a single key
 const int MAX_INPUT_SIZE = 10001;
 
 struct Vector2D
