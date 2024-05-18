@@ -46,7 +46,7 @@ nvcc -O3 -o kmeans map_reduce.o
 
 wordcount
 ```bash
-./wordcount ../data/WordCount word_count_input1.txt
+./wordcount ../data/WordCount/word_count_input1.txt
 ```
 kmeans
 ```bash
