@@ -76,7 +76,11 @@ struct PairVector
         os << "(";
         for (int i = 0; i < DIMENSION; i++)
         {
-            os << vector.values[i] << ", ";
+            os << vector.values[i];
+            if (i != DIMENSION - 1)
+            {
+                os << ", ";
+            }
         }
         os << ")";
         return os;

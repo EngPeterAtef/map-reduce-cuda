@@ -265,6 +265,7 @@ void runPipeline(input_type *input, output_type *&output)
         float temp = 0;
         float iterationTime = 0;
         std::cout << "Iteration: " << iter << std::endl;
+        // ================== MAP ==================
         for (int s = 0; s < numberOfStreams; s++)
         {
             int start = s * segment_size;
@@ -280,7 +281,6 @@ void runPipeline(input_type *input, output_type *&output)
                 cudaMemcpyAsync(&dev_input[start], &input[start], segment_input_size * sizeof(input_type), cudaMemcpyHostToDevice, streams[s]);
             }
 
-            // ================== MAP ==================
             temp = runMapKernel(&dev_input[start], &dev_pairs[start], dev_output, segment_input_size_d, NUM_OUTPUT_D, streams[s]);
             // Print the time of the runs
             std::cout << "\n\nIteration:" << iter << " Stream:" << s << " Map function GPU Time: " << temp << " ms" << std::endl;
