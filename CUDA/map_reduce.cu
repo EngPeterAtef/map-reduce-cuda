@@ -413,18 +413,24 @@ void runPipeline(input_type *input, output_type *&output)
 // GPU Kernel Implementation of Bitonic Sort
 __global__ void bitonicSortGPU(MyPair *arr, int j, int k)
 {
+    // Calculate the global index of the thread within the grid
     unsigned int i, ij;
 
     i = threadIdx.x + blockDim.x * blockIdx.x;
 
+    // Compute the index of the element to compare with using bitwise XOR
     ij = i ^ j;
 
+    // Ensure the comparison is only done once per unique pair
     if (ij > i)
     {
+        // Determine the sorting direction based on the k-th bit of i
         if ((i & k) == 0)
         {
+            // If the k-th bit of i is 0, sort in ascending order
             if (PairCompareGreater()(arr[i], arr[ij]))
             {
+                // Swap elements if arr[i] is greater than arr[ij]
                 MyPair temp = arr[i];
                 arr[i] = arr[ij];
                 arr[ij] = temp;
@@ -432,8 +438,10 @@ __global__ void bitonicSortGPU(MyPair *arr, int j, int k)
         }
         else
         {
+            // If the k-th bit of i is 1, sort in descending order
             if (PairCompare()(arr[i], arr[ij]))
             {
+                // Swap elements if arr[i] is less than arr[ij]
                 MyPair temp = arr[i];
                 arr[i] = arr[ij];
                 arr[ij] = temp;

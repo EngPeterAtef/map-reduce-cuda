@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <vector>
 #include <fstream>
+#include <thrust/device_ptr.h>
+#include <thrust/sort.h>
 using namespace std;
 
 #define MAX_THREADS_PER_BLOCK 1024
@@ -218,7 +220,7 @@ int main(int argc, char *argv[])
     // Close the file
     file.close();
     int size = (int)data.size();
-
+    data.clear();
     std::cout << "-----------------------------------------------" << std::endl;
     std::cout << "CUDA MERGE AND BITONIC SORT IMPLEMENTATION" << std::endl;
     std::cout << "A Performance Comparison of These 2 Sorts in CPU vs GPU" << std::endl;
@@ -290,18 +292,19 @@ int main(int argc, char *argv[])
     cudaMalloc(&gpuArrmerge, size * sizeof(MyPair));
 
     // Copy the input array to GPU memory
-    cudaMemcpy(gpuArrmerge, arr, size * sizeof(MyPair), cudaMemcpyHostToDevice);
-    cudaMemcpy(gpuArrbiton, arr, size * sizeof(MyPair), cudaMemcpyHostToDevice);
 
     // Main If else block
     if (choice == 1)
     {
+        cudaMemcpy(gpuArrmerge, arr, size * sizeof(MyPair), cudaMemcpyHostToDevice);
         // Call GPU Merge Kernel and time the run
         cudaEventRecord(startGPU);
         for (int wid = 1; wid < size; wid *= 2)
         {
             mergeSortGPU<<<threadsPerBlock, blocksPerGrid>>>(gpuArrmerge, gpuTemp, size, wid * 2);
         }
+        // thrust::sort(thrust::device, gpuArrmerge, gpuArrmerge + size, PairCompare());
+
         cudaEventRecord(stopGPU);
 
         // Transfer sorted array back to CPU
@@ -318,6 +321,7 @@ int main(int argc, char *argv[])
     }
     else
     {
+        cudaMemcpy(gpuArrbiton, arr, size * sizeof(MyPair), cudaMemcpyHostToDevice);
         if (isPowerOfTwo(size))
         {
 
