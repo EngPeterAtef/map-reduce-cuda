@@ -9,7 +9,6 @@ int map_num_threads = 6;
 int reduce_num_threads = 6;
 // No. of input elements (Lines in text file)
 unsigned long long NUM_INPUT;
-// No. of pairs per input element
 
 // No. of values in each line (Size of datapoint)
 const int DIMENSION = 2;
