@@ -1,6 +1,6 @@
-# MapReduce with CUDA
+# MapReduce with CUDA :rocket:
 
-## System description
+## System description :computer:
 
 ### Map-Reduce
 
@@ -18,11 +18,11 @@ The Shuffle and Sort kernel arranges the processed data elements into a desired 
 The Reduce kernel aggregates the results obtained from the Map kernel by performing a reduction operation, such as summation or finding the maximum value. Through parallel reduction techniques, this kernel efficiently combines intermediate results to produce a single output
 value for each key.
 
-## Block Diagram
+## Block Diagram :triangular_ruler:
 
 ![Block Diagram](./assets/block_diagram.png)
 
-## Implementation
+## Implementation :hammer:
 
 Map and Reduce functions are user-defined, with a given signature for both functions. The user is also able to specify his data structures based on his problem definition.  
 A data file path is provided via command line arguments, the file is automatically read and then fed to the pipeline specified in the block diagram.
@@ -64,7 +64,7 @@ with coalescing memory access and control divergence in mind.
 These parameters are provided via a config.cuh (ex:kmeans.cuh,
 wordcount.cuh) file and included in the main map_reduce.cu file.
 
-## Experiments and results
+## Experiments and results :chart_with_upwards_trend:
 
 ### Problems Tested
 
@@ -90,7 +90,7 @@ wordcount.cuh) file and included in the main map_reduce.cu file.
 - REDUCE_GRID_SIZE = (shuffle_output_size +
 - REDUCE_BLOCK_SIZE x 2 - 1) /  (REDUCE_BLOCK_SIZE x 2), is different depending on the the number of values for each unique key.
 
-## Performance analysis
+## Performance analysis :test_tube:
 
 ### Theoretical analysis
 
@@ -105,7 +105,7 @@ Format: CPU ⇒ GPU
 |---------------------------------|-----------------------------------------------|
 |  O(NLog(N)) ==> O(Log(N)) <br> N = dataset size | O(N(Log(N))^2) ==> O(Log(N)^2) <br> N = dataset size |
 
-## How to run
+## How to run :play_or_pause_button:
 
 ### 1. CUDA
 
@@ -234,3 +234,9 @@ kmeans
 ```
 
 4. Output will be save in the file {input_name}_output.txt
+
+## Collaborators :handshake:
+
+| [![bemoierian](https://avatars.githubusercontent.com/u/72103362?v=4)](https://github.com/bemoierian) | [![EngPeterAtef](https://avatars.githubusercontent.com/u/75852529?v=4)](https://github.com/EngPeterAtef) | [![markyasser](https://avatars.githubusercontent.com/u/82395903?v=4)](https://github.com/markyasser) |
+|-------------------------------------|--------------------------------------|--------------------------------------|
+|[Bemoi Erian](https://github.com/bemoierian)                         |[Peter Atef](https://github.com/EngPeterAtef)                       |[Mark Yasser](https://github.com/markyasser)                         |
